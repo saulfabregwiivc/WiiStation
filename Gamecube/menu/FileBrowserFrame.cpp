@@ -480,7 +480,7 @@ int ChkString(char * str1, char * str2, int len)
 
 static void CheckGameAutoFix(void)
 {
-    int autoFixLen = 34;
+    int autoFixLen = 35;
     char autoFixGames[autoFixLen][10] = {
          "SLUS00447" // VANDAL HEARTS
         ,"SLUS00940" // VANDAL HEARTS II
@@ -521,6 +521,8 @@ static void CheckGameAutoFix(void)
         ,"SLPS91480" // PARASITE EVE II [PSONE BOOKS] [ 2 DISCS ]
         ,"SLPS02779" // PARASITE EVE II [SQUARESOFT MILLENNIUM COLLECTION]  -  [ 2 DISCS ]
         ,"SLPS02780" // PARASITE EVE II [SQUARESOFT MILLENNIUM COLLECTION]  -  [ 2 DISCS ]
+	
+	,"SLUS00964" // HOT WHEELS - TURBO RACING [NTSC-U]
 
     };
 
