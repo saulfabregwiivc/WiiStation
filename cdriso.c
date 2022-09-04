@@ -116,7 +116,8 @@ static struct trackinfo ti[MAXTRACKS];
 
 // get a sector from a msf-array
 static inline unsigned int msf2sec(char *msf) {
-	return ((msf[0] * 60 + msf[1]) * 75) + msf[2];
+	//return ((msf[0] * 60 + msf[1]) * 75) + msf[2];
+	return msf2SectMNoItob[msf[0]] + msf2SectMNoItob[msf[1]] + msf[2];
 }
 
 static inline void sec2msf(unsigned int s, char *msf) {
