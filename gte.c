@@ -263,7 +263,7 @@ static inline u32 limE_(psxCP2Regs *regs, u32 result) {
 
 //senquack - n param should be unsigned (will be 'gteH' reg which is u16)
 #ifdef GTE_USE_NATIVE_DIVIDE
-INLINE u32 DIVIDE(u16 n, u16 d) {
+INLINE u32 DIVIDE_INT(u16 n, u16 d) {
 	if (n < d * 2) {
 		return ((u32)n << 16) / d;
 	}
@@ -428,7 +428,7 @@ void gteRTPS(psxCP2Regs *regs) {
 	gteSZ1 = gteSZ2;
 	gteSZ2 = gteSZ3;
 	gteSZ3 = limD(gteMAC3);
-	quotient = limE(DIVIDE(gteH, gteSZ3));
+	quotient = limE(DIVIDE_INT(gteH, gteSZ3));
 	gteSXY0 = gteSXY1;
 	gteSXY1 = gteSXY2;
 	gteSX2 = limG1(F((s64)gteOFX + ((s64)gteIR1 * quotient)) >> 16);
@@ -462,7 +462,7 @@ void gteRTPT(psxCP2Regs *regs) {
 		gteIR2 = limB2(gteMAC2, 0);
 		gteIR3 = limB3(gteMAC3, 0);
 		fSZ(v) = limD(gteMAC3);
-		quotient = limE(DIVIDE(gteH, fSZ(v)));
+		quotient = limE(DIVIDE_INT(gteH, fSZ(v)));
 		fSX(v) = limG1(F((s64)gteOFX + ((s64)gteIR1 * quotient)) >> 16);
 		fSY(v) = limG2(F((s64)gteOFY + ((s64)gteIR2 * quotient)) >> 16);
 	}
