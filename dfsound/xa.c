@@ -61,18 +61,10 @@ INLINE void MixXA(int *SSumLR, int ns_to, int decode_pos)
  short l, r;
  uint32_t v = spu.XALastVal;
 
-   for(ns = 0; ns < ns_to*2; ns += 2)
-   {
-    spu.spuMem[cursor] = 0;
-    spu.spuMem[cursor + 0x400/2] = 0;
-    cursor = (cursor + 1) & 0x1ff;
-   }
-
-  cursor = decode_pos;
  if(spu.XAPlay != spu.XAFeed || spu.XARepeat > 0)
  {
-  //if(spu.XAPlay == spu.XAFeed)
-  // spu.XARepeat--;
+  if(spu.XAPlay == spu.XAFeed)
+   spu.XARepeat--;
 
   for(ns = 0; ns < ns_to*2; )
    {
@@ -94,6 +86,8 @@ INLINE void MixXA(int *SSumLR, int ns_to, int decode_pos)
  cursor = decode_pos;
  if(spu.CDDAPlay != spu.CDDAFeed || spu.CDDARepeat > 0)
  {
+   if (spu.CDDAPlay == spu.CDDAFeed)
+     spu.CDDARepeat--;
    v = spu.CDDALastVal;
   for(ns = 0; ns < ns_to*2; )
    {
@@ -144,7 +138,7 @@ INLINE void FeedXA(xa_decode_t *xap)
  if(!spu.bSPUIsOpen) return;
 
  spu.xapGlobal = xap;                                  // store info for save states
- spu.XARepeat  = 100;                                  // set up repeat
+ spu.XARepeat  = 3;                                    // set up repeat
 
 #if 0//def XA_HACK
  iSize=((45500*xap->nsamples)/xap->freq);              // get size
@@ -411,6 +405,8 @@ INLINE void FeedXA(xa_decode_t *xap)
   }
 }
 
+#define PS_SPU_FREQ	48000
+#define SINC (((u32)1 << 16) * 44100 / (PS_SPU_FREQ))
 ////////////////////////////////////////////////////////////////////////
 // FEED CDDA
 ////////////////////////////////////////////////////////////////////////
@@ -427,7 +423,7 @@ INLINE int FeedCDDA(unsigned char *pcm, int nBytes)
      #endif // DISP_DEBUG
      return 0x7761; // rearmed_wait
  }
- spu.CDDARepeat  = 100;
+ spu.CDDARepeat  = 3;
  while(nBytes>0)
   {
    if(spu.CDDAFeed==spu.CDDAEnd) spu.CDDAFeed=spu.CDDAStart;
@@ -442,6 +438,32 @@ INLINE int FeedCDDA(unsigned char *pcm, int nBytes)
    nBytes-=space;
    pcm+=space;
   }
+
+    /*int spos = 0x10000L;
+    uint32_t *pS = (uint32_t *)pcm;
+    uint32_t l = 0;
+    int iSize = (PS_SPU_FREQ * (nBytes >> 2)) / 44100;
+    int i;
+    for (i = 0; i < iSize; i++)
+    {
+        while (spos >= 0x10000L)
+        {
+            l = *pS++;
+            spos -= 0x10000L;
+        }
+
+        *spu.CDDAFeed++ = l;
+
+        if (spu.CDDAFeed == spu.CDDAEnd) spu.CDDAFeed = spu.CDDAStart;
+
+        while (spu.CDDAFeed == spu.CDDAPlay-1
+               || (spu.CDDAFeed == spu.CDDAEnd - 1 && spu.CDDAPlay == spu.CDDAStart))
+        {
+            usleep(1000);
+        }
+
+        spos += SINC;
+    }*/
 
  return 0x676f; // rearmed_go
 }
