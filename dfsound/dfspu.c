@@ -1105,7 +1105,7 @@ int do_samples(unsigned int cycles_to, int do_direct)
 
  if (cycle_diff < 2 * 768)
  {
-     //spu.cycles_played = cycles_to;
+     spu.cycles_played = cycles_to;
      return 0;
  }
 
