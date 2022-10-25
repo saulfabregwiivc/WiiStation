@@ -592,7 +592,15 @@ void fileBrowserFrame_LoadFile(int i)
 			if(Autoboot){
 				// FIXME: The MessageBox is a hacky way to fix input not responding.
 				// No time to improve this...
-				menu::MessageBox::getInstance().setMessage("Autobooting game...");
+				CheckGameAutoFix();
+				if (Config.RCntFix)
+            			{
+					menu::MessageBox::getInstance().setMessage("Autobooting auto-fixed game...");
+            			}
+            			else
+            			{
+                			menu::MessageBox::getInstance().setMessage("Autobooting game...");
+            			}
 				Func_SetPlayGame();
 				Func_PlayGame();
 				pMenuContext->setActiveFrame(MenuContext::FRAME_MAIN);
