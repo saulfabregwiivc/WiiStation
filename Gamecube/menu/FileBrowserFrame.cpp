@@ -592,10 +592,7 @@ void fileBrowserFrame_LoadFile(int i)
 			if(Autoboot){
 				// FIXME: The MessageBox is a hacky way to fix input not responding.
 				// No time to improve this...
-				#ifdef HW_RVL
-				// saulfabreg: Maybe with this piece of code we can get input when in autoboot mode... (nasty, untested code)
-				WPADData* wiiPad = menu::Input::getInstance().getWpad();
-				#endif
+				pMenuContext->setActiveFrame(MenuContext::FRAME_MAIN);
 				CheckGameAutoFix();
 				if (Config.RCntFix)
             			{
