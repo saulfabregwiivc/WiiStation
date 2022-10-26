@@ -534,6 +534,45 @@ static void CheckGameAutoFix(void)
     }
 }
 
+static void CheckGameR3000AutoFix(void)
+{
+    int autoFixR3000Len = 8;
+    char autoFixR3000JR[autoFixR3000Len][10] = {
+         "SLES00037" // Alone in the Dark - Jack is Back
+        ,"SLPS00141"
+        ,"SLUS00239"
+
+        ,"SLUS00590" // Need for Speed - V-Rally
+        ,"SLES00250"
+        ,"SLPS01149"
+        ,"SLPS91099"
+        ,"SLPS91430"
+    };
+
+    Config.pR3000Fix = 0;
+    int i;
+    for (i = 0; i < autoFixR3000Len; i++)
+    {
+        if (ChkString(CdromId, autoFixR3000JR[i], strlen(autoFixR3000JR[i]))) {
+            Config.pR3000Fix = 1;
+            break;
+        }
+    }
+
+    autoFixR3000Len = 2;
+    char autoFixR3000LW[autoFixR3000Len][10] = {
+         "SLUS01005" // Supercross 2000
+        ,"SLES02373"
+    };
+    for (i = 0; i < autoFixR3000Len; i++)
+    {
+        if (ChkString(CdromId, autoFixR3000LW[i], strlen(autoFixR3000LW[i]))) {
+            Config.pR3000Fix = 2;
+            break;
+        }
+    }
+}
+
 void fileBrowserFrame_LoadFile(int i)
 {
 	char feedback_string[256] = "Failed to load ISO";
@@ -583,6 +622,18 @@ void fileBrowserFrame_LoadFile(int i)
                 sprintf(buffer, "AUTO FIXED: no\n");
             }
 			strcat(RomInfo,buffer);
+			// auto recJR => psxJR for some game
+			CheckGameR3000AutoFix();
+			if (Config.pR3000Fix)
+            {
+                sprintf(buffer, "AUTO pR3000Fix: yes\n");
+            }
+            else
+            {
+                sprintf(buffer, "AUTO pR3000Fix: no\n");
+            }
+			strcat(RomInfo,buffer);
+
 			sprintf(buffer,"ISO Size: %u Mb\n",isoFile.size/1024/1024);
 			strcat(RomInfo,buffer);
 			sprintf(buffer,"Country: %s\n",(!Config.PsxType) ? "NTSC":"PAL");

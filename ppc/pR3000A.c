@@ -1090,12 +1090,21 @@ __inline static void execute() {
 	char *p;
 
 	p =	(char*)PC_REC(psxRegs.pc);
-	/*if (p != NULL)*/ recFunc = (void (**)()) (u32)p;
+	/*if (p != NULL)*/
 	/*else { recError(); return; }*/
 
-	if (*recFunc == 0) {
+	if (*p == 0) {
 		recRecompile();
 	}
+	else if (psxRegs.ICache_valid == FALSE) { // Xenogears: fixes memory card access with original BIOS (0a_44_FlushCache issue)
+		//psxCpu->Clear(0x0, 0x20000);
+		memset(recRAM, 0, 0x200000);
+		recRecompile();
+		p = (char*)PC_REC(psxRegs.pc);
+		psxRegs.ICache_valid = TRUE;
+	}
+	recFunc = (void (**)()) (u32)p;
+
 	recRun(*recFunc, (u32)&psxRegs, (u32)&psxM);
 }
 
@@ -1136,7 +1145,6 @@ static void recNULL() {
 * Format:  table[something....]                          *
 *********************************************************/
 
-//REC_SYS(SPECIAL);
 static void recSPECIAL() {
     #ifdef SHOW_DEBUG
     printFunctionLog();
@@ -1181,6 +1189,7 @@ static void recBASIC() {
 * Format:  OP rt, rs, immediate                          *
 *********************************************************/
 
+//REC_FUNC(ADDIU);
 static void recADDIU()  {
 // Rt = Rs + Im
     #ifdef SHOW_DEBUG
@@ -1199,11 +1208,13 @@ static void recADDIU()  {
 	}
 }
 
+//REC_FUNC(ADDI);
 static void recADDI()  {
 // Rt = Rs + Im
 	recADDIU();
 }
 
+//REC_FUNC(SLTI);
 //CR0:	SIGN      | POSITIVE | ZERO  | SOVERFLOW | SOVERFLOW | OVERFLOW | CARRY
 static void recSLTI() {
 // Rt = Rs < Im (signed)
@@ -1228,6 +1239,7 @@ static void recSLTI() {
 	}
 }
 
+//REC_FUNC(SLTIU);
 static void recSLTIU() {
 // Rt = Rs < Im (unsigned)
 	#ifdef SHOW_DEBUG
@@ -1247,6 +1259,7 @@ static void recSLTIU() {
 	}
 }
 
+//REC_FUNC(ANDI);
 static void recANDI() {
 // Rt = Rs And Im
     if (!_Rt_) return;
@@ -1258,6 +1271,7 @@ static void recANDI() {
     }
 }
 
+//REC_FUNC(ORI);
 static void recORI() {
 // Rt = Rs Or Im
 	#ifdef SHOW_DEBUG
@@ -1276,6 +1290,7 @@ static void recORI() {
 	}
 }
 
+//REC_FUNC(XORI);
 static void recXORI() {
 // Rt = Rs Xor Im
     #ifdef SHOW_DEBUG
@@ -1318,7 +1333,7 @@ static void recLUI()  {
 * Register arithmetic                                    *
 * Format:  OP rd, rs, rt                                 *
 *********************************************************/
-
+//REC_FUNC(ADDU);
 static void recADDU() {
 // Rd = Rs + Rt
 	#ifdef SHOW_DEBUG
@@ -1349,11 +1364,13 @@ static void recADDU() {
 	}
 }
 
+//REC_FUNC(ADD);
 static void recADD() {
 // Rd = Rs + Rt
 	recADDU();
 }
 
+//REC_FUNC(SUBU);
 static void recSUBU() {
 // Rd = Rs - Rt
     #ifdef SHOW_DEBUG
@@ -1376,11 +1393,13 @@ static void recSUBU() {
     }
 }
 
+//REC_FUNC(SUB);
 static void recSUB() {
 // Rd = Rs - Rt
 	recSUBU();
 }
 
+//REC_FUNC(AND);
 static void recAND() {
 // Rd = Rs And Rt
     #ifdef SHOW_DEBUG
@@ -1408,6 +1427,7 @@ static void recAND() {
     }
 }
 
+//REC_FUNC(OR);
 static void recOR() {
 // Rd = Rs Or Rt
     #ifdef SHOW_DEBUG
@@ -1441,6 +1461,7 @@ static void recOR() {
     }
 }
 
+//REC_FUNC(XOR);
 static void recXOR() {
 // Rd = Rs Xor Rt
     #ifdef SHOW_DEBUG
@@ -1467,6 +1488,7 @@ static void recXOR() {
     }
 }
 
+//REC_FUNC(NOR);
 static void recNOR() {
 // Rd = Rs Nor Rt
     #ifdef SHOW_DEBUG
@@ -1493,6 +1515,7 @@ static void recNOR() {
     }
 }
 
+//REC_FUNC(SLT);
 static void recSLT() {
 // Rd = Rs < Rt (signed)
     #ifdef SHOW_DEBUG
@@ -1512,6 +1535,7 @@ static void recSLT() {
     }
 }
 
+//REC_FUNC(SLTU);
 static void recSLTU() {
 // Rd = Rs < Rt (unsigned)
     #ifdef SHOW_DEBUG
@@ -1552,6 +1576,7 @@ int DoShift(u32 k)
 	return -1;
 }
 
+//REC_FUNC(MULT);
 // FIXME: doesn't work in GT - wrong way marker
 static void recMULT() {
 // Lo/Hi = Rs * Rt (signed)
@@ -1626,6 +1651,7 @@ static void recMULT() {
 	}
 }
 
+//REC_FUNC(MULTU);
 static void recMULTU() {
 // Lo/Hi = Rs * Rt (unsigned)
 	#ifdef SHOW_DEBUG
@@ -1693,6 +1719,7 @@ static void recMULTU() {
 	}
 }
 
+//REC_FUNC(DIV);
 void psxDIV();
 void psxDIVU();
 static inline void recPsxDiv() {
@@ -2006,6 +2033,7 @@ static void preMemWrite(int size)
 	//FlushAllHWReg();
 }
 
+//REC_FUNC(LB);
 static void recLB() {
 // Rt = mem[Rs + Im] (signed)
 
@@ -2049,6 +2077,7 @@ static void recLB() {
 	}
 }
 
+//REC_FUNC(LBU);
 static void recLBU() {
 // Rt = mem[Rs + Im] (unsigned)
 
@@ -2091,6 +2120,7 @@ static void recLBU() {
 	}
 }
 
+//REC_FUNC(LH);
 static void recLH() {
 // Rt = mem[Rs + Im] (signed)
 
@@ -2134,6 +2164,7 @@ static void recLH() {
 	}
 }
 
+//REC_FUNC(LHU);
 static void recLHU() {
 // Rt = mem[Rs + Im] (unsigned)
 
@@ -2218,12 +2249,25 @@ static void recLHU() {
 	}
 }
 
+//REC_FUNC(LW);
+void psxLW();
 static void recLW() {
 // Rt = mem[Rs + Im] (unsigned)
 
 	#ifdef SHOW_DEBUG
     printFunctionLog();
     #endif // SHOW_DEBUG
+    if (Config.pR3000Fix == 2)
+    {
+        iFlushRegs(0);
+        LIW(PutHWRegSpecial(ARG1), (u32)psxRegs.code);
+        STW(GetHWRegSpecial(ARG1), OFFSET(&psxRegs, &psxRegs.code), GetHWRegSpecial(PSXREGS));
+        LIW(PutHWRegSpecial(PSXPC), (u32)pc);
+        FlushAllHWReg();
+        CALLFunc((u32)psxLW);
+        return;
+    }
+
 	if (IsConst(_Rs_)) {
 		u32 addr = iRegs[_Rs_].k + _Imm_;
 		int t = addr >> 16;
@@ -2304,6 +2348,7 @@ REC_FUNC(LWR);
 REC_FUNC(SWL);
 REC_FUNC(SWR);
 
+//REC_FUNC(SB);
 static void recSB() {
 // mem[Rs + Im] = Rt
 
@@ -2339,6 +2384,7 @@ static void recSB() {
 	CALLFunc((u32)psxMemWrite8);
 }
 
+//REC_FUNC(SH);
 static void recSH() {
 // mem[Rs + Im] = Rt
 
@@ -2389,6 +2435,7 @@ static void recSH() {
 	CALLFunc((u32)psxMemWrite16);
 }
 
+//REC_FUNC(SW);
 static void recSW() {
 // mem[Rs + Im] = Rt
 	//u32 *b1, *b2;
@@ -2490,6 +2537,7 @@ static void recSLL() {
     }
 }
 
+//REC_FUNC(SRL);
 static void recSRL() {
 // Rd = Rt >> Sa
     #ifdef SHOW_DEBUG
@@ -2504,6 +2552,7 @@ static void recSRL() {
     }
 }
 
+//REC_FUNC(SRA);
 static void recSRA() {
 // Rd = Rt >> Sa
     #ifdef SHOW_DEBUG
@@ -2520,7 +2569,7 @@ static void recSRA() {
 
 
 /* - shift ops - */
-
+//REC_FUNC(SLLV);
 static void recSLLV() {
 // Rd = Rt << Rs
 	#ifdef SHOW_DEBUG
@@ -2540,6 +2589,7 @@ static void recSLLV() {
 	}
 }
 
+//REC_FUNC(SRLV);
 static void recSRLV() {
 // Rd = Rt >> Rs
 	#ifdef SHOW_DEBUG
@@ -2559,6 +2609,7 @@ static void recSRLV() {
 	}
 }
 
+//REC_FUNC(SRAV);
 static void recSRAV() {
 // Rd = Rt >> Rs
 	#ifdef SHOW_DEBUG
@@ -2578,6 +2629,7 @@ static void recSRAV() {
 	}
 }
 
+//REC_SYS(SYSCALL);
 static void recSYSCALL() {
 //	dump=1;
 	#ifdef SHOW_DEBUG
@@ -2596,12 +2648,14 @@ static void recSYSCALL() {
 	iRet();
 }
 
+//REC_SYS(BREAK);
 static void recBREAK() {
     #ifdef SHOW_DEBUG
     printFunctionLog();
     #endif // SHOW_DEBUG
 }
 
+//REC_FUNC(MFHI);
 static void recMFHI() {
 // Rd = Hi
 	#ifdef SHOW_DEBUG
@@ -2616,6 +2670,7 @@ static void recMFHI() {
 	}
 }
 
+//REC_FUNC(MTHI);
 static void recMTHI() {
 // Hi = Rs
 
@@ -2629,6 +2684,7 @@ static void recMTHI() {
 	}
 }
 
+//REC_FUNC(MFLO);
 static void recMFLO() {
 // Rd = Lo
 	#ifdef SHOW_DEBUG
@@ -2643,6 +2699,7 @@ static void recMFLO() {
 	}
 }
 
+//REC_FUNC(MTLO);
 static void recMTLO() {
 // Lo = Rs
 
@@ -2658,6 +2715,7 @@ static void recMTLO() {
 
 /* - branch ops - */
 
+//REC_BRANCH(BLTZ);
 static void recBLTZ() {
 // Branch if Rs < 0
 	#ifdef SHOW_DEBUG
@@ -2685,6 +2743,7 @@ static void recBLTZ() {
 	pc+=4;
 }
 
+//REC_BRANCH(BGTZ);
 static void recBGTZ() {
 // Branch if Rs > 0
     #ifdef SHOW_DEBUG
@@ -2712,6 +2771,7 @@ static void recBGTZ() {
     pc+=4;
 }
 
+//REC_BRANCH(BLTZAL);
 static void recBLTZAL() {
 // Branch if Rs < 0
     #ifdef SHOW_DEBUG
@@ -2743,6 +2803,7 @@ static void recBLTZAL() {
     pc+=4;
 }
 
+//REC_BRANCH(BGEZAL);
 static void recBGEZAL() {
 // Branch if Rs >= 0
     #ifdef SHOW_DEBUG
@@ -2774,6 +2835,7 @@ static void recBGEZAL() {
     pc+=4;
 }
 
+//REC_BRANCH(J);
 static void recJ() {
 // j target
 
@@ -2783,6 +2845,7 @@ static void recJ() {
 	iJump(_Target_ * 4 + (pc & 0xf0000000));
 }
 
+//REC_BRANCH(JAL);
 static void recJAL() {
 // jal target
 	#ifdef SHOW_DEBUG
@@ -2793,6 +2856,8 @@ static void recJAL() {
 	iJump(_Target_ * 4 + (pc & 0xf0000000));
 }
 
+//REC_BRANCH(JR);
+void psxJR();
 static void recJR() {
 // jr Rs
 
@@ -2803,11 +2868,26 @@ static void recJR() {
 		iJump(iRegs[_Rs_].k);
 		//LIW(PutHWRegSpecial(TARGET), iRegs[_Rs_].k);
 	} else {
-		MR(PutHWRegSpecial(TARGET), GetHWReg32(_Rs_));
-		SetBranch();
+	    if (Config.pR3000Fix == 1)
+        {
+            iFlushRegs(0);
+            LIW(PutHWRegSpecial(ARG1), (u32)psxRegs.code);
+            STW(GetHWRegSpecial(ARG1), OFFSET(&psxRegs, &psxRegs.code), GetHWRegSpecial(PSXREGS));
+            LIW(PutHWRegSpecial(PSXPC), (u32)pc);
+            FlushAllHWReg();
+            CALLFunc((u32)psxJR);
+            branch = 2;
+            iRet();
+        }
+        else
+        {
+            MR(PutHWRegSpecial(TARGET), GetHWReg32(_Rs_));
+		    SetBranch();
+        }
 	}
 }
 
+//REC_BRANCH(JALR);
 static void recJALR() {
 // jalr Rs
 
@@ -2824,6 +2904,7 @@ static void recJALR() {
 	}
 }
 
+//REC_BRANCH(BEQ);
 static void recBEQ() {
 // Branch if Rs == Rt
 	#ifdef SHOW_DEBUG
@@ -2880,6 +2961,7 @@ static void recBEQ() {
 	}
 }
 
+//REC_BRANCH(BNE);
 static void recBNE() {
 // Branch if Rs != Rt
 	#ifdef SHOW_DEBUG
@@ -2936,6 +3018,7 @@ static void recBNE() {
 	}
 }
 
+//REC_BRANCH(BLEZ);
 static void recBLEZ() {
 // Branch if Rs <= 0
 	#ifdef SHOW_DEBUG
@@ -2963,6 +3046,7 @@ static void recBLEZ() {
 	pc+=4;
 }
 
+//REC_BRANCH(BGEZ);
 static void recBGEZ() {
 // Branch if Rs >= 0
 	#ifdef SHOW_DEBUG
@@ -2993,6 +3077,7 @@ static void recBGEZ() {
 
 REC_FUNC(RFE);
 
+//REC_FUNC(MFC0);
 static void recMFC0() {
 // Rt = Cop0->Rd
 	#ifdef SHOW_DEBUG
@@ -3003,6 +3088,7 @@ static void recMFC0() {
 	LWZ(PutHWReg32(_Rt_), OFFSET(&psxRegs, &psxRegs.CP0.r[_Rd_]), GetHWRegSpecial(PSXREGS));
 }
 
+//REC_FUNC(CFC0);
 static void recCFC0() {
 // Rt = Cop0->Rd
 
@@ -3012,6 +3098,7 @@ static void recCFC0() {
 	recMFC0();
 }
 
+//REC_FUNC(MTC0);
 static void recMTC0() {
 // Cop0->Rd = Rt
 
@@ -3057,6 +3144,7 @@ static void recMTC0() {
 	}
 }
 
+//REC_FUNC(CTC0);
 static void recCTC0() {
 // Cop0->Rd = Rt
 
@@ -3094,6 +3182,7 @@ CP2_FUNC(GPF);
 CP2_FUNC(GPL);
 CP2_FUNCNC(NCCT);
 
+//REC_FUNC(HLE);
 static void recHLE() {
 	iFlushRegs(0);
 	FlushAllHWReg();
