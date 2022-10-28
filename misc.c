@@ -567,6 +567,8 @@ int SaveState() {
 	GPU_freeze(1, gpufP);
 	gzwrite(f, gpufP, sizeof(GPUFreeze_t));
 	free(gpufP);
+	if (HW_GPU_STATUS == 0)
+		HW_GPU_STATUS = GPU_readStatus();
 	// gpu VRAM save (save directly to save memory)
 	gzwrite(f, &psxVub[0], 1024*iGPUHeight*2);
   LoadingBar_showBar(0.80f, SAVE_STATE_MSG);
