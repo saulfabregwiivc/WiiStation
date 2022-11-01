@@ -551,7 +551,7 @@ static void CheckGameAutoFix(void)
         ,"SLPS91150" // NTSC-J - PlayStation The Best version
         ,"SLUS00520" // NTSC-U
         ,"SLES00914" // PAL
-	,"SLES00915" // France
+	    ,"SLES00915" // France
         ,"SLES00916" // Germany
         ,"SLES00917" // Italy
         ,"SLES00918" // Spain
