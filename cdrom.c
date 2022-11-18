@@ -871,7 +871,7 @@ void cdrInterrupt() {
 			if (!Config.Cdda)
 				CDR_play(cdr.SetSectorPlay);
 
-			// Vib Ribbon: gameplay checks flag
+			// Vib-Ribbon: gameplay checks flag
 			cdr.StatP &= ~STATUS_SEEK;
 			cdr.Result[0] = cdr.StatP;
 
