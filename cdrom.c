@@ -252,6 +252,30 @@ static void sec2msf(unsigned int s, u8 *msf) {
 	msf[2] = s;
 }
 
+extern long CALLBACK ISOinit(void);
+extern void CALLBACK SPUirq(void);
+extern SPUregisterCallback SPU_registerCallback;
+
+// A bit of a kludge, but it will get rid of the "macro redefined" warnings
+
+#ifdef H_SPUirqAddr
+#undef H_SPUirqAddr
+#endif
+
+#ifdef H_SPUaddr
+#undef H_SPUaddr
+#endif
+
+#ifdef H_SPUctrl
+#undef H_SPUctrl
+#endif
+
+#define H_SPUirqAddr		0x1f801da4
+#define H_SPUaddr				0x1f801da6
+#define H_SPUctrl				0x1f801daa
+#define H_CDLeft				0x1f801db0
+#define H_CDRight				0x1f801db2
+
 // cdrInterrupt
 #define CDR_INT(eCycle) { \
 	psxRegs.interrupt |= (1 << PSXINT_CDR); \
@@ -311,6 +335,44 @@ static void setIrq(void)
 		psxHu32ref(0x1070) |= SWAP32((u32)0x4);
 		psxRegs.interrupt|= 0x80000000;
 	}
+}
+
+// FIXME: do this in SPU instead
+void cdrDecodedBufferInterrupt()
+{
+#if 0
+	return;
+#endif
+
+
+	// ISO reader only
+	if( CDR_init != ISOinit ) return;
+
+
+	// check dbuf IRQ still active
+	if( cdr.Play == 0 ) return;
+	if( (SPU_readRegister( H_SPUctrl ) & 0x40) == 0 ) return;
+	if( (SPU_readRegister( H_SPUirqAddr ) * 8) >= 0x800 ) return;
+
+
+	// turn off plugin SPU IRQ decoded buffer handling
+	SPU_registerCallback( 0 );
+
+
+	/*
+	Vib Ribbon
+	000-3FF = left CDDA
+	400-7FF = right CDDA
+	Assume IRQ every wrap
+	*/
+
+	// signal CDDA data ready
+	psxHu32ref(0x1070) |= SWAP32((u32)0x200);
+
+
+	// time for next full buffer
+	//CDRDBUF_INT( PSXCLK / 44100 * 0x200 );
+	CDRDBUF_INT( PSXCLK / 44100 * 0x100 );
 }
 
 // timing used in this function was taken from tests on real hardware
@@ -871,7 +933,7 @@ void cdrInterrupt() {
 			if (!Config.Cdda)
 				CDR_play(cdr.SetSectorPlay);
 
-			// Vib-Ribbon: gameplay checks flag
+			// Vib Ribbon: gameplay checks flag
 			cdr.StatP &= ~STATUS_SEEK;
 			cdr.Result[0] = cdr.StatP;
 
