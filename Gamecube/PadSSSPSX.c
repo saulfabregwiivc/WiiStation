@@ -198,7 +198,7 @@ long SSS_PADopen (void *p)
 		memset (&global, 0, sizeof (global));
 		memset (&lastport, 0, sizeof (lastport));
 		int i;
-    	for(i = 0; i < 4; i++) {
+    	for(i = 1; i < 4; i++) { // saulfabreg: i think this value sets the Multitap position to Player 1 (Slot i = 0) / Player 2 (Slot i = 1)?
 			global.padStat[i] = 0xffff;
 			PADsetMode (i, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port i, analog
 		}
