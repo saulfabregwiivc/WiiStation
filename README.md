@@ -1,6 +1,6 @@
 ![WiiStation logo](https://github.com/xjsxjs197/WiiSXRX_2022/raw/main/logo.png)
 
-# WiiStation
+# WiiStation - With PS1 Multitap support by vmartinv
 
 WiiStation (formely WiiSXRX_2022), is a Sony PlayStation 1 (PS1/PSX/PSone) emulator, forked from the original WiiSX-RX (http://github.com/niuus/WiiSXRX) emulator by NiuuS, originally a port of PCSX-Reloaded, but with many changes from PCSX-ReARMed, for the Nintendo Wii/Wii U.
 
