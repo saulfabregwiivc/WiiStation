@@ -44,31 +44,35 @@
 
 //static BUTTONS PAD_1;
 //static BUTTONS PAD_2;
-extern PadDataS lastport1;
-extern PadDataS lastport2;
+extern PadDataS lastport[4];
 static int pad_initialized = 0;
 
 static struct
 {
 	SSSConfig config;	//unused?
 	//int devcnt;			//unused
-	u16 padStat[2];		//Digital Buttons
-	int padID[2];
-	int padMode1[2];	//0 = digital, 1 = analog
-	int padMode2[2];	
-	int padModeE[2];	//Config/Escape mode??
-	int padModeC[2];
-	int padModeF[2];
-	int padVib0[2];		//Command byte for small motor
-	int padVib1[2];		//Command byte for large motor
-	int padVibF[2][4];	//Sm motor value; Big motor value; Sm motor running?; Big motor running?
+	u16 padStat[4];		//Digital Buttons
+	int padID[4];
+	int padMode1[4];	//0 = digital, 1 = analog
+	int padMode2[4];	
+	int padModeE[4];	//Config/Escape mode??
+	int padModeC[4];
+	int padModeF[4];
+	int padVib0[4];		//Command byte for small motor
+	int padVib1[4];		//Command byte for large motor
+	int padVibF[4][4];	//Sm motor value; Big motor value; Sm motor running?; Big motor running?
 	//int padVibC[2];		//unused
-	u64 padPress[2][16];//unused?
+	u64 padPress[4][16];//unused?
 	int curPad;			//0=pad1; 1=pad2
 	int curByte;		//current command/data byte
 	int curCmd;			//current command from PSX/PS2
 	int cmdLen;			//# of bytes in pad reply
 } global;
+
+unsigned char multitapBuffer[35] = { 0x80, 0x00, 0x5a, 0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+													0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+													0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+													0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 extern void SysPrintf(char *fmt, ...);
 extern int stop;
@@ -77,7 +81,7 @@ extern int stop;
 //extern char controllerType = 0; // 0 = standard, 1 = analog (analog fails on old games)
 extern long  PadFlags;
 
-extern virtualControllers_t virtualControllers[2];
+extern virtualControllers_t virtualControllers[4];
 
 // Use to invoke func on the mapped controller with args
 #define DO_CONTROL(Control,func,args...) \
@@ -95,6 +99,10 @@ static void PADsetMode (const int pad, const int mode)	//mode = 0 (digital) or 1
 	global.padVibF[pad][0] = 0;
 	global.padVibF[pad][1] = 0;
 	global.padID[pad] = padID[global.padMode2[pad] * 2 + mode];
+}
+
+static bool NeedsMultitap(){
+	return virtualControllers[2].inUse || virtualControllers[3].inUse;
 }
 
 static void UpdateState (const int pad) //Note: pad = 0 or 1
@@ -141,18 +149,9 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 
 	global.padStat[pad] = (((PAD_Data.btns.All>>8)&0xFF) | ( (PAD_Data.btns.All<<8) & 0xFF00 )) &0xFFFF;
 
-	if (pad==0)
-	{
-		lastport1.leftJoyX = PAD_Data.leftStickX; lastport1.leftJoyY = PAD_Data.leftStickY;
-		lastport1.rightJoyX = PAD_Data.rightStickX; lastport1.rightJoyY = PAD_Data.rightStickY;
-		lastport1.buttonStatus = global.padStat[pad];
-	}
-	else
-	{
-		lastport2.leftJoyX = PAD_Data.leftStickX; lastport2.leftJoyY = PAD_Data.leftStickY;
-		lastport2.rightJoyX = PAD_Data.rightStickX; lastport2.rightJoyY = PAD_Data.rightStickY;
-		lastport2.buttonStatus = global.padStat[pad];
-	}
+	lastport[pad].leftJoyX = PAD_Data.leftStickX; lastport[pad].leftJoyY = PAD_Data.leftStickY;
+	lastport[pad].rightJoyX = PAD_Data.rightStickX; lastport[pad].rightJoyY = PAD_Data.rightStickY;
+	lastport[pad].buttonStatus = global.padStat[pad];
 	
 	/* Small Motor */
 	if ((global.padVibF[pad][2] != vib0) )
@@ -168,17 +167,41 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 	}
 }
 
+static void UpdateMultitapState (const int pad) //Note: pad = 0 or 1
+{
+    int i = 0;
+    int offset = 2;
+    for(i = 1; i < 4; i++) {
+		UpdateState(i);
+    	offset = 2 + (i * 8);
+		if(global.padMode1[i]==1){ //analog
+			multitapBuffer[offset + 1] = 0x73;
+			multitapBuffer[offset + 2] = global.padModeC[i] ? 0x00 : 0x5a;
+			*((u16*)(multitapBuffer + offset + 3)) = global.padStat[i];
+			multitapBuffer[offset + 5] = lastport[i].rightJoyX;
+			multitapBuffer[offset + 6] = lastport[i].rightJoyY;
+			multitapBuffer[offset + 7] = lastport[i].leftJoyX;
+			multitapBuffer[offset + 8] = lastport[i].leftJoyY;
+		}
+		else{
+			multitapBuffer[offset + 1] = 0x41;
+			multitapBuffer[offset + 2] = global.padModeC[i] ? 0x00 : 0x5a;
+			*((u16*)(multitapBuffer + offset + 3)) = global.padStat[i];
+		}
+    }
+}
+
 long SSS_PADopen (void *p)
 {
 	if (!pad_initialized)
 	{
 		memset (&global, 0, sizeof (global));
-		memset( &lastport1, 0, sizeof(lastport1) ) ;
-		memset( &lastport2, 0, sizeof(lastport2) ) ;
-		global.padStat[0] = 0xffff;
-		global.padStat[1] = 0xffff;
-		PADsetMode (0, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port 0, analog
-		PADsetMode (1, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port 1, analog
+		memset (&lastport, 0, sizeof (lastport));
+		int i;
+    	for(i = 0; i < 4; i++) {
+			global.padStat[i] = 0xffff;
+			PADsetMode (i, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port i, analog
+		}
 	}
 	return 0;
 }
@@ -201,6 +224,48 @@ unsigned char SSS_PADstartPoll (int pad)
 	global.curPad = pad -1;
 	global.curByte = 0;
 	return 0xff;
+}
+
+unsigned char SendJoystickData(const int pad, const unsigned char value, u8 *buf){
+	global.cmdLen = 2 + 2 * (global.padID[pad] & 0x0f);
+	buf[1] = global.padModeC[pad] ? 0x00 : 0x5a;
+	((u16*)buf)[1] = global.padStat[pad];
+	if (value == 0x43 && global.padModeE[pad])
+	{
+		((u16*)buf)[2] = 0;
+		((u16*)buf)[3] = 0;
+		return 0xf3;
+	}
+	else
+	{
+		buf[4] = lastport[pad].rightJoyX ;
+		buf[5] = lastport[pad].rightJoyY ;
+		buf[6] = lastport[pad].leftJoyX ;
+		buf[7] = lastport[pad].leftJoyY ;
+		//if (global.padID[pad] == 0x79)
+		//{
+		// do some pressure stuff (this is for PS2 only!)
+		//}
+		return (u8)global.padID[pad];
+	}
+}
+
+unsigned char SendMultitapData(const int pad, const unsigned char value, u8 *buf){
+	if(NeedsMultitap()){
+		if(pad==1){
+			global.cmdLen = 4;
+			buf[1] = 0x5a;
+			buf[2] = 0x00;
+			buf[3] = 0x00;
+			return 0x41;
+		}
+		global.cmdLen = 34;
+		memcpy(buf, multitapBuffer+1, 34);
+		return multitapBuffer[0];
+	}
+	else{
+		return SendJoystickData(pad, value, buf);
+	}
 }
 
 static const u8 cmd40[8] =
@@ -252,8 +317,8 @@ unsigned char SSS_PADpoll (const unsigned char value)
 #pragma pack(push,1)
 	union buffer
 	{
-		u16 b16[10];
-		u8  b8[20];
+		u16 b16[24];
+		u8  b8[48];
 	};
 
 	static union buffer buf;
@@ -272,29 +337,9 @@ unsigned char SSS_PADpoll (const unsigned char value)
 			memcpy (buf.b8, cmd41, sizeof (cmd41));
 			return 0xf3;
 		case 0x42:
-			UpdateState (pad);
+			UpdateMultitapState (pad);
 		case 0x43:
-			global.cmdLen = 2 + 2 * (global.padID[pad] & 0x0f);
-			buf.b8[1] = global.padModeC[pad] ? 0x00 : 0x5a;
-			buf.b16[1] = global.padStat[pad];
-			if (value == 0x43 && global.padModeE[pad])
-			{
-				buf.b16[2] = 0;
-				buf.b16[3] = 0;
-				return 0xf3;
-			}
-			else
-			{
-				buf.b8[4] = pad ? lastport2.rightJoyX : lastport1.rightJoyX ;
-				buf.b8[5] = pad ? lastport2.rightJoyY : lastport1.rightJoyY ;
-				buf.b8[6] = pad ? lastport2.leftJoyX : lastport1.leftJoyX ;
-				buf.b8[7] = pad ? lastport2.leftJoyY : lastport1.leftJoyY ;
-				//if (global.padID[pad] == 0x79)
-				//{
-  				// do some pressure stuff (this is for PS2 only!)
-				//}
-				return (u8)global.padID[pad];
-			}
+			return SendMultitapData(pad, value, buf.b8);
 			break;
 		case 0x44:
 			global.cmdLen = sizeof (cmd44);
@@ -440,7 +485,7 @@ long SSS_PADreadPort1 (PadDataS* pads)
 		pads->rightJoyX = PAD_1.rightStickX; pads->rightJoyY = PAD_1.rightStickY;
 	}
 
-	memcpy( &lastport1, pads, sizeof( lastport1 ) ) ;
+	memcpy( &lastport[0], pads, sizeof( lastport[0] ) ) ;
 */
 	return 0;
 }
@@ -483,7 +528,7 @@ long SSS_PADreadPort2 (PadDataS* pads)
 		pads->rightJoyX = PAD_2.rightStickX; pads->rightJoyY = PAD_2.rightStickY;
 	}
 
-	memcpy( &lastport2, pads, sizeof( lastport1 ) ) ;
+	memcpy( &lastport[1], pads, sizeof( lastport[1] ) ) ;
 */
 	return 0;
 }

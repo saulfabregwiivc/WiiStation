@@ -179,7 +179,7 @@ enum padAutoAssign
 	PADAUTOASSIGN_AUTOMATIC
 };
 
-extern char padType[2];
+extern char padType[4];
 enum padType
 {
 	PADTYPE_NONE=0,
@@ -187,7 +187,7 @@ enum padType
 	PADTYPE_WII
 };
 
-extern char padAssign[2];
+extern char padAssign[4];
 enum padAssign
 {
 	PADASSIGN_INPUT0=0,

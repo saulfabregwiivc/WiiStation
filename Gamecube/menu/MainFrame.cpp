@@ -200,7 +200,7 @@ void Func_Credits()
 	strcat(CreditsInfo,"matguitarist - USB 2.0 support\n");
 	strcat(CreditsInfo,"Daxtsu - libwupc support\n");
 	strcat(CreditsInfo,"NiuuS - WiiSXRX fork\n");
-	strcat(CreditsInfo,"\n");
+	strcat(CreditsInfo,"vmartinv - PS1 Multitap support\n");
 	strcat(CreditsInfo, wiiDetails);
 #endif
 
