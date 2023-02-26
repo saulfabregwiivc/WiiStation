@@ -167,6 +167,7 @@ typedef struct {
 	u8 ICache_Addr[0x1000];
 	u8 ICache_Code[0x1000];
 	bool ICache_valid;
+	s8 code_buffer [0x200000] __attribute__((aligned(32))); // 2 MiB code buffer for Lightrec
 } psxRegisters;
 
 extern psxRegisters psxRegs;
