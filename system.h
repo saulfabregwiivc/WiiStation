@@ -17,8 +17,8 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
  ***************************************************************************/
 
-#ifndef __SYSTEM_H__
-#define __SYSTEM_H__
+#ifndef __SYSTEM_1_H__
+#define __SYSTEM_1_H__
 
 int  SysInit();							// Init mem and plugins
 void SysReset();						// Resets mem

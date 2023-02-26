@@ -136,36 +136,7 @@ void CALLBACK CDR__about(void) {}
 	LoadSym(CDR_##dest, CDR##dest, name, 0);
 
 int LoadCDRplugin(char *CDRdll) {
-    if (true) {
-		cdrIsoInit();
-		return 0;
-	}
-
-	void *drv;
-
-	hCDRDriver = SysLoadLibrary(CDRdll);
-	if (hCDRDriver == NULL) {
-		CDR_configure = NULL;
-		SysPrintf ("Could Not load CDR plugin %s\n", CDRdll);  return -1;
-	}
-	drv = hCDRDriver;
-	LoadCdrSym1(init, "CDRinit");
-	LoadCdrSym1(shutdown, "CDRshutdown");
-	LoadCdrSym1(open, "CDRopen");
-	LoadCdrSym1(close, "CDRclose");
-	LoadCdrSym1(getTN, "CDRgetTN");
-	LoadCdrSym1(getTD, "CDRgetTD");
-	LoadCdrSym1(readTrack, "CDRreadTrack");
-	LoadCdrSym1(getBuffer, "CDRgetBuffer");
-	LoadCdrSym1(play, "CDRplay");
-	LoadCdrSym1(stop, "CDRstop");
-	LoadCdrSym1(getStatus, "CDRgetStatus");
-	LoadCdrSym0(getDriveLetter, "CDRgetDriveLetter");
-	LoadCdrSym1(getBufferSub, "CDRgetBufferSub");
-	LoadCdrSym0(configure, "CDRconfigure");
-	LoadCdrSym0(test, "CDRtest");
-	LoadCdrSym0(about, "CDRabout");
-
+	cdrIsoInit();
 	return 0;
 }
 
