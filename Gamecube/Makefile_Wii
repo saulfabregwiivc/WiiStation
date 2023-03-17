@@ -35,7 +35,7 @@ INCLUDES	:=
 # options for code generation
 #---------------------------------------------------------------------------------
 
-CFLAGS	= -flto -Ofast -w -fpermissive $(MACHDEP) $(INCLUDE) -D__GAMECUBE__ -DWII -DHW_RVL -D__ppc__ \
+CFLAGS	= -fipa-pta -flto -Ofast -w -fpermissive $(MACHDEP) $(INCLUDE) -D__GAMECUBE__ -DWII -DHW_RVL -D__ppc__ \
 		  -D__GX__ \
 		  -DTHREADED_AUDIO -D_GNU_SOURCE -DDISP_DEBUG -DSHOW_DEBUG
 
