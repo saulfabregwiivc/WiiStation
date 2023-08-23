@@ -102,6 +102,12 @@ void BuildDispMenu(int iInc)
 
  strcpy(szMenuBuf,"        ");     // main menu items
 
+ if(iUseDither)                                        // set marks
+  {
+   if(iUseDither==1) szMenuBuf[12]  = '+';
+   else              szMenuBuf[12]  = '*';
+  }
+
  if(dwCoreFlags&1)  szMenuBuf[23]  = 'A';
  if(dwCoreFlags&2)  szMenuBuf[23]  = 'M';
 
