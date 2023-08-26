@@ -16,7 +16,7 @@ WiiStation (formely WiiSXRX_2022), is a Sony PlayStation 1 (PS1/PSX/PSone) emula
 * Combined the DFSound module from PCSX-ReARMed and used the SDL library.
   The sound quality of the system has been greatly improved.
 
-* Replacing the old PowerPC (PPC) dynarec with the new dynamic recompiler [Lightrec](https://github.com/pcercuei/lightrec) by pcercuei, the speed/performance of the emulation is greatly improved.
+* Inclusing the new PSX dynamic recompiler [Lightrec](https://github.com/pcercuei/lightrec) by pcercuei, the speed/performance of the emulation is greatly improved. The old PPC dynarec, as well as the Interpreter core, are kept as an option in case of compatiblity change.
 
 * Support for multiple languages.
   At first, I wanted to refer to Snes9x GX and support TTF font library.
