@@ -559,6 +559,8 @@ static void lightrec_plugin_execute_internal(bool block_only)
 
 	if (flags & LIGHTREC_EXIT_SYSCALL)
 		psxException(0x20, 0);
+	if (flags & LIGHTREC_EXIT_BREAK)
+		psxException(0x20, 0);
 
 	//if (booting && (psxRegs.pc & 0xff800000) == 0x80000000)
 	//	booting = false;
