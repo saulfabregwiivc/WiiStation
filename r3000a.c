@@ -140,7 +140,7 @@ static inline void psxTestHWInts() {
             u32 opcode;
 
 			// Crash Bandicoot 2: Don't run exceptions when GTE in pipeline
-			opcode = SWAP32(*Read_ICache(psxRegs.pc, TRUE));
+			opcode = SWAP32(*Read_ICache(psxRegs.pc));
 			if( ((opcode >> 24) & 0xfe) != 0x4a ) {
 			    psxException(0x400, 0);
 			}

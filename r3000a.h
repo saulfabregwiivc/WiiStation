@@ -197,7 +197,7 @@ TODO:
 - Isolate D-cache from RAM
 */
 
-static inline u32 *Read_ICache(u32 pc, bool isolate) {
+static inline u32 *Read_ICache(u32 pc) {
 	u32 pc_bank, pc_offset, pc_cache;
 	u8 *IAddr, *ICode;
 
@@ -217,8 +217,8 @@ static inline u32 *Read_ICache(u32 pc, bool isolate) {
 	}
 
 	// uncached
-	if (pc_bank >= 0xa0)
-		return (u32 *)PSXM(pc);
+	//if (pc_bank >= 0xa0)
+	//	return (u32 *)PSXM(pc);
 
 	// cached - RAM
 	if (pc_bank == 0x80 || pc_bank == 0x00) {
@@ -229,27 +229,22 @@ static inline u32 *Read_ICache(u32 pc, bool isolate) {
 			// Cache miss - addresses don't match
 			// - default: 0xffffffff (not init)
 
-			if (!isolate) {
-				// cache line is 4 bytes wide
-				pc_offset &= ~0xf;
-				pc_cache &= ~0xf;
+			// cache line is 4 bytes wide
+			pc_offset &= ~0xf;
+			pc_cache &= ~0xf;
 
-				// address line
-				*(u32 *)(IAddr + pc_cache + 0x0) = SWAP32(pc_offset + 0x0);
-				*(u32 *)(IAddr + pc_cache + 0x4) = SWAP32(pc_offset + 0x4);
-				*(u32 *)(IAddr + pc_cache + 0x8) = SWAP32(pc_offset + 0x8);
-				*(u32 *)(IAddr + pc_cache + 0xc) = SWAP32(pc_offset + 0xc);
+			// address line
+			*(u32 *)(IAddr + pc_cache + 0x0) = SWAP32(pc_offset + 0x0);
+			*(u32 *)(IAddr + pc_cache + 0x4) = SWAP32(pc_offset + 0x4);
+			*(u32 *)(IAddr + pc_cache + 0x8) = SWAP32(pc_offset + 0x8);
+			*(u32 *)(IAddr + pc_cache + 0xc) = SWAP32(pc_offset + 0xc);
 
-				// opcode line
-				pc_offset = pc & ~0xf;
-				*(u32 *)(ICode + pc_cache + 0x0) = psxMu32ref(pc_offset + 0x0);
-				*(u32 *)(ICode + pc_cache + 0x4) = psxMu32ref(pc_offset + 0x4);
-				*(u32 *)(ICode + pc_cache + 0x8) = psxMu32ref(pc_offset + 0x8);
-				*(u32 *)(ICode + pc_cache + 0xc) = psxMu32ref(pc_offset + 0xc);
-			}
-
-			// normal code
-			return (u32 *)PSXM(pc);
+			// opcode line
+			pc_offset = pc & ~0xf;
+			*(u32 *)(ICode + pc_cache + 0x0) = psxMu32ref(pc_offset + 0x0);
+			*(u32 *)(ICode + pc_cache + 0x4) = psxMu32ref(pc_offset + 0x4);
+			*(u32 *)(ICode + pc_cache + 0x8) = psxMu32ref(pc_offset + 0x8);
+			*(u32 *)(ICode + pc_cache + 0xc) = psxMu32ref(pc_offset + 0xc);
 		}
 	}
 
