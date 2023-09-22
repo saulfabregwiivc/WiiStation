@@ -385,6 +385,7 @@ void psxMemWrite32(u32 mem, u32 value) {
 						memset(psxMemWLUT + 0xa000, 0, 0x80 * sizeof(void *));
 
 						psxRegs.ICache_valid = FALSE;
+						psxCpu->Notify(R3000ACPU_NOTIFY_CACHE_ISOLATED, NULL);
 						break;
 					case 0x00: case 0x1e988:
 						if (writeok == 1) break;
@@ -392,6 +393,9 @@ void psxMemWrite32(u32 mem, u32 value) {
 						for (i = 0; i < 0x80; i++) psxMemWLUT[i + 0x0000] = (void *)&psxM[(i & 0x1f) << 16];
 						memcpy(psxMemWLUT + 0x8000, psxMemWLUT, 0x80 * sizeof(void *));
 						memcpy(psxMemWLUT + 0xa000, psxMemWLUT, 0x80 * sizeof(void *));
+
+						/* Dynarecs might take this opportunity to flush their code cache */
+						psxCpu->Notify(R3000ACPU_NOTIFY_CACHE_UNISOLATED, NULL);
 						break;
 					default:
 #ifdef PSXMEM_LOG

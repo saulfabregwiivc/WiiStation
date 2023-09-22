@@ -1793,6 +1793,39 @@ void psxDma3(u32 madr, u32 bcr, u32 chcr) {
 				memcpy(ptr, pTransfer, size);
 			}
 
+			/* Workaround for 'Studio 33' games that do Icache trickery:
+			 * -senquack (mips dynarec team) January 2018
+			 *  'Formula One 99'     (crash on load)
+			 *                       NOTE: PAL version needs .SBI subchannel file
+			 *  'Formula One 2001'   (in-game controls, AI broken, even on PS3)
+			 *  'Formula One Arcade' (crash on load, PAL untested)
+			 * (other Studio 33 games seem to work fine)
+			 *  Dynarecs can take this opportunity to flush their code. The MIPS
+			 * dynarec uses this to work around these games: flushing on icache
+			 * status change alone is not enough. The complete workaround
+			 * requires that recompiled code does no invalidations of its own
+			 * (stores don't invalidate code). DMA transfers both here and
+			 * elsewhere, as usual, do invalidate code. The workaround is only
+			 * enabled for these specific games. Hacky, but fast and effective.
+			 *  XXX: Shalma got these games working in PCSX Reloaded's
+			 * interpreter via icache emulation. That code has not yet been
+			 * backported to ours. Also, his technique would likely be slower
+			 * and difficult to implement for a dynarec.
+			 *  XXX: 'Formula One 2000' and 'Formula One Championship Season 2000'
+			 * still suffer from freeze at startup using both this and Shalma's
+			 * techniques. These are from a different publisher, however:
+			 * Maybe unsupported copy-protection methods? Pure evil?
+			 *  XXX: When selecting a circuit in 'Formula One 99', it takes 5-10
+			 * seconds for the animated preview to finally appear. It's easy for
+			 * users to mistakenly assume the game froze, even on a PC emulator.
+			 * Sometimes, a range error is reported in cdrom code before this.
+			 */
+			if (cdr.FirstSector == 1 && size >= 8 &&
+			    strncmp((const char*)pTransfer, "PS-X EXE", 8) == 0)
+			{
+				psxCpu->Notify(R3000ACPU_NOTIFY_DMA3_EXE_LOAD, NULL);
+			}
+
 			psxCpu->Clear(madr, cdsize / 4);
 			pTransfer += cdsize;
 

@@ -110,6 +110,9 @@ __inline static void recRecompile();
 static void recRecompileInit();
 static void recError();
 
+static bool emit_code_invalidations;       /* Emit code invalidation for store instructions? */
+static bool flush_code_on_dma3_exe_load;   /* Flush code cache when psxDma3() detects EXE load? */
+
 // used in debug.c for dynarec free space printing
 u32 dyna_used = 0;
 u32 dyna_total = RECMEM_SIZE;
@@ -1113,6 +1116,74 @@ static int allocMem() {
 
 static int recInit() {
 	return allocMem();
+}
+
+/* Notification from emulator. */
+void recNotify(int note, void *data __attribute__((unused)))
+{
+	switch (note)
+	{
+		/* R3000ACPU_NOTIFY_CACHE_ISOLATED,
+		 * R3000ACPU_NOTIFY_CACHE_UNISOLATED
+		 *  Sent from psxMemWrite32_CacheCtrlPort(). Also see notes there.
+		 */
+		case R3000ACPU_NOTIFY_CACHE_ISOLATED:
+			/*  There's no need to do anything here:
+			 * psxMemWrite32_CacheCtrlPort() has backed up lower 64KB PS1 RAM,
+			 * allowing stores in emitted code to skip checking if cache
+			 * is isolated before writing to RAM (the old 'writeok' check).
+			 */
+			PRINT_LOG1("R3000ACPU_NOTIFY_CACHE_ISOLATED", which);
+			break;
+		case R3000ACPU_NOTIFY_CACHE_UNISOLATED:
+			/*  Flush entire code cache, game has loaded new code:
+			 * BIOS or routine has finished invalidating cache lines.
+			 * psxMemWrite32_CacheCtrlPort() has restored lower 64KB PS1 RAM.
+			 *  Using this coarse invalidation method fixes some games that
+			 * previously needed hacks in recClear(), 'Buster Bros. Collection'.
+			 * It's also part of a fix/hack for certain games that did Icache
+			 * trickery (see DMA3 stuff further below).
+			 * TODO: With this new method, it should eventually be possible to
+			 *  provide an option to allow emitted code to skip most code
+			 *  invalidations after stores, boosting speed.
+			 */
+			recClear(0, 0x200000/4);
+			PRINT_LOG1("R3000ACPU_NOTIFY_CACHE_UNISOLATED", which);
+			break;
+
+		/* Sent from psxDma3(). Also see notes there. */
+		case R3000ACPU_NOTIFY_DMA3_EXE_LOAD:
+			/* Game has begun reading from a CDROM file whose first sector is
+			 * a standard 'PS-X EXE' header. Part of a hack by senquack to fix:
+			 *  'Formula One Arcade' (crash on load)
+			 *  'Formula One 99'     (crash on load) (NOTE: PAL version requires .SBI file)
+			 *  'Formula One 2001'   (in-game controls, AI broken.. even the PS3
+			 *                        supposedly has trouble emulating this.)
+			 *
+			 *  The workaround is enabled on a per-game basis (using CdromId).
+			 *
+			 *  These games do Icache trickery and merely doing the usual
+			 * code-flush when Icache is unisolated is not enough. The fix is
+			 * admittedly just a lucky hack, and requires these things:
+			 *  1.)  As usual, invalidate code whenever emu calls recClear(),
+			 *      typically after a DMA transfer.
+			 *      *However*, emit no code invalidations whatsoever.
+			 *      Fixes the in-game AI/controls in 'Formula One 2001'.
+			 *  2.)  As usual, flush code cache when Icache is unisolated.
+			 *      *However*, also flush cache when psxDma3() notifies us here.
+			 *      This fixes crashes.
+			 */
+			if (flush_code_on_dma3_exe_load) {
+				recClear(0, 0x200000/4);
+				PRINT_LOG1("R3000ACPU_NOTIFY_DMA3_EXE_LOAD .. Flushing dynarec cache", which);
+			} else {
+				PRINT_LOG1("R3000ACPU_NOTIFY_DMA3_EXE_LOAD", which);
+			}
+			break;
+
+		default:
+			break;
+	}
 }
 
 static void recReset() {

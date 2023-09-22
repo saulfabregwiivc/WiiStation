@@ -979,6 +979,19 @@ static void intExecuteBlockDbg() {
 static void intClear(u32 Addr, u32 Size) {
 }
 
+/* Custom function added to notify dynarecs about icache-related events.
+ *  Could be used here to implement a cleaner version of Shalma's icache
+ *  emulation, which hasn't yet been backported to our interpreter.
+ */
+static void intNotify(int note, void *data) {
+	/* Gameblabla - Only clear the icache if it's isolated */
+	if (note == R3000ACPU_NOTIFY_CACHE_ISOLATED)
+	{
+		memset(ICache_Addr, 0xff, 0x1000);
+		memset(ICache_Code, 0xff, 0x1000);
+	}
+}
+
 static void intShutdown() {
 }
 
@@ -1017,6 +1030,7 @@ R3000Acpu psxInt = {
 	intExecute,
 	intExecuteBlock,
 	intClear,
+	intNotify,
 	intShutdown
 };
 
