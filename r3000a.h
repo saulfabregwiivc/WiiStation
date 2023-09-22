@@ -25,6 +25,13 @@
 #include "psxcounters.h"
 #include "psxbios.h"
 
+enum {
+	R3000ACPU_NOTIFY_CACHE_ISOLATED = 0,
+	R3000ACPU_NOTIFY_CACHE_UNISOLATED = 1,
+	R3000ACPU_NOTIFY_DMA3_EXE_LOAD = 2
+};
+extern u32 *Read_ICache(u32 pc);
+
 /* R3000A exceptions list:
 
 - R3000E_Int = 0      // Interrupt
@@ -45,6 +52,7 @@ typedef struct {
 	void (*Execute)();		/* executes up to a break */
 	void (*ExecuteBlock)();	/* executes up to a jump */
 	void (*Clear)(u32 Addr, u32 Size);
+	void (*Notify)(int note, void *data);
 	void (*Shutdown)();
 } R3000Acpu;
 
@@ -184,6 +192,8 @@ typedef struct {
 	bool ICache_valid;
 	u32 io_cycle_counter;
 } psxRegisters;
+
+extern boolean writeok;
 
 extern psxRegisters psxRegs;
 

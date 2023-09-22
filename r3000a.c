@@ -58,7 +58,7 @@ void psxReset() {
 	psxMemReset();
 
 	memset(&psxRegs, 0, sizeof(psxRegs));
-
+	writeok = TRUE;
 	psxRegs.pc = 0xbfc00000; // Start in bootstrap
 
 	psxRegs.CP0.r[12] = 0x10900000; // COP0 enabled | BEV = 1 | TS = 1

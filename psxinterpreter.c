@@ -268,7 +268,8 @@ void psxDelayTest(int reg, u32 bpc) {
 	u32 tmp;
 
 	// Don't execute yet - just peek
-	code = Read_ICache(bpc, TRUE);
+	//code = Read_ICache(bpc, TRUE);
+	code = Read_ICache(psxRegs, TRUE);
 
 	tmp = ((code == NULL) ? 0 : SWAP32(*code));
 	branch = 1;
@@ -935,11 +936,32 @@ void (*psxCP2BSC[32])() = {
 ///////////////////////////////////////////
 
 static int intInit() {
+	if (!ICache_Addr)
+	{
+		ICache_Addr = malloc(0x1000);
+		if (!ICache_Addr)
+		{
+			return -1;
+		}
+	}
+
+	if (!ICache_Code)
+	{
+		ICache_Code = malloc(0x1000);
+		if (!ICache_Code)
+		{
+			return -1;
+		}
+	}
+	memset(ICache_Addr, 0xff, 0x1000);
+	memset(ICache_Code, 0xff, 0x1000);
 	return 0;
 }
 
 static void intReset() {
 	psxRegs.ICache_valid = FALSE;
+	memset(ICache_Addr, 0xff, 0x1000);
+	memset(ICache_Code, 0xff, 0x1000);
 }
 
 // interpreter execution
@@ -979,7 +1001,27 @@ static void intExecuteBlockDbg() {
 static void intClear(u32 Addr, u32 Size) {
 }
 
+void intNotify (int note, void *data) {
+	/* Gameblabla - Only clear the icache if it's isolated */
+	if (note == R3000ACPU_NOTIFY_CACHE_ISOLATED)
+	{
+		memset(ICache_Addr, 0xff, 0x1000);
+		memset(ICache_Code, 0xff, 0x1000);
+	}
+}
+
 static void intShutdown() {
+	if (ICache_Addr)
+	{
+		free(ICache_Addr);
+		ICache_Addr = NULL;
+	}
+
+	if (ICache_Code)
+	{
+		free(ICache_Code);
+		ICache_Code = NULL;
+	}
 }
 
 /* debugger version */
@@ -1017,6 +1059,7 @@ R3000Acpu psxInt = {
 	intExecute,
 	intExecuteBlock,
 	intClear,
+	intNotify,
 	intShutdown
 };
 
