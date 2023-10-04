@@ -55,19 +55,10 @@ static bool multifile = FALSE;
 static unsigned char cdbuffer[CD_FRAMESIZE_RAW];
 static unsigned char subbuffer[SUB_FRAMESIZE];
 
-#define CDDA_FRAME_COUNT 4
-
-static unsigned char sndbuffer[CD_FRAMESIZE_RAW * CDDA_FRAME_COUNT];
-static unsigned long sndbufferPitch[WII_SPU_FREQ * (sizeof(sndbuffer) >> 2) / PS_SPU_FREQ + 4];
-
-#define CDDA_FRAMETIME			(1000 * CDDA_FRAME_COUNT / 75)
-
-static unsigned int initial_offset = 0;
 static bool playing = FALSE;
 static bool cddaBigEndian = TRUE;
 // cdda sectors in toc, byte offset in file
 static unsigned int cdda_cur_sector;
-static unsigned int cdda_first_sector;
 static unsigned int cdda_file_offset;
 /* Frame offset into CD image where pregap data would be found if it was there.
  * If a game seeks there we must *not* return subchannel data since it's
@@ -1589,9 +1580,8 @@ static long CALLBACK ISOreadTrack(unsigned char *time) {
 // plays cdda audio
 // sector: byte 0 - minute; byte 1 - second; byte 2 - frame
 // does NOT uses bcd format
-static long CALLBACK ISOplay(unsigned char *time) {
-    playing = TRUE;
-
+static long CALLBACK ISOplay(void) {
+	playing = TRUE;
 	return 0;
 }
 

@@ -588,6 +588,7 @@ static void cdrPlayInterrupt_Autopause(s16* cddaBuf)
         //DEBUG_print("Autopause CDR_readCDDA ===", DBG_CDR1);
         #endif // DISP_DEBUG
 		//CDR_readCDDA(cdr.SetSectorPlay[0], cdr.SetSectorPlay[1], cdr.SetSectorPlay[2], (u8 *)cddaBuf);
+		CDR_readCDDA(cdr.SetSectorPlay[0], cdr.SetSectorPlay[1], cdr.SetSectorPlay[2], (u8 *)read_buf);
 		cdr.Result[0] = cdr.StatP;
 		cdr.Result[1] = cdr.subq.Track;
 		cdr.Result[2] = cdr.subq.Index;
@@ -897,7 +898,8 @@ void cdrInterrupt() {
 			cdr.FirstSector = 1;
 
 			if (!Config.Cdda)
-				CDR_play(cdr.SetSectorPlay);
+				//CDR_play(cdr.SetSectorPlay);
+				CDR_play();
 
 			// Vib Ribbon: gameplay checks flag
 			SetPlaySeekRead(cdr.StatP, STATUS_SEEK | STATUS_ROTATING);
@@ -1913,7 +1915,8 @@ int cdrFreeze(gzFile f, int Mode) {
 
 			Find_CurTrack(cdr.SetSectorPlay);
 			if (!Config.Cdda)
-				CDR_play(cdr.SetSectorPlay);
+				//CDR_play(cdr.SetSectorPlay);
+				CDR_play();
 		}
 
 		if ((cdr.freeze_ver & 0xffffff00) != 0x63647200) {
