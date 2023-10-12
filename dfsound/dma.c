@@ -21,13 +21,11 @@
 
 #include "externals.h"
 
-bool readFromCdData = false;
-
 ////////////////////////////////////////////////////////////////////////
 // READ DMA (one value)
 ////////////////////////////////////////////////////////////////////////
 
-unsigned short DF_SPUreadDMA(void)
+unsigned short CALLBACK DFS_SPUreadDMA(void)
 {
  unsigned short s = *(unsigned short *)(spu.spuMemC + spu.spuAddr);
  spu.spuAddr += 2;
@@ -40,30 +38,19 @@ unsigned short DF_SPUreadDMA(void)
 // READ DMA (many values)
 ////////////////////////////////////////////////////////////////////////
 
-void DF_SPUreadDMAMem(unsigned short *pusPSXMem, int iSize,
-    unsigned int cycles)
+void CALLBACK DFS_SPUreadDMAMem(unsigned short *pusPSXMem, int iSize,
+ unsigned int cycles)
 {
-    int i;
+ int i;
 
-    //do_samples_if_needed(cycles, 1);
+ do_samples_if_needed(cycles, 1);
 
-    for (i = 0; i < iSize; i++)
-    {
-        if (spu.spuAddr <= 0x07ff) // CD audio
-        {
-            // For Vib Ribbon
-            *pusPSXMem = LOAD_SWAP16p(spu.spuMemC + spu.spuAddr);
-            readFromCdData = true;
-        }
-        else
-        {
-            *pusPSXMem = *(unsigned short *)(spu.spuMemC + spu.spuAddr);
-            readFromCdData = false;
-        }
-        pusPSXMem++;
-        spu.spuAddr += 2;
-        spu.spuAddr &= 0x7fffe;
-    }
+ for(i=0;i<iSize;i++)
+  {
+   *pusPSXMem++ = *(unsigned short *)(spu.spuMemC + spu.spuAddr);
+   spu.spuAddr += 2;
+   spu.spuAddr &= 0x7fffe;
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -77,8 +64,8 @@ void DF_SPUreadDMAMem(unsigned short *pusPSXMem, int iSize,
 ////////////////////////////////////////////////////////////////////////
 // WRITE DMA (one value)
 ////////////////////////////////////////////////////////////////////////
-
-void DF_SPUwriteDMA(unsigned short val)
+  
+void CALLBACK DFS_SPUwriteDMA(unsigned short val)
 {
  *(unsigned short *)(spu.spuMemC + spu.spuAddr) = val;
 
@@ -91,28 +78,27 @@ void DF_SPUwriteDMA(unsigned short val)
 // WRITE DMA (many values)
 ////////////////////////////////////////////////////////////////////////
 
-void DF_SPUwriteDMAMem(unsigned short *pusPSXMem, int iSize,
-    unsigned int cycles)
+void CALLBACK DFS_SPUwriteDMAMem(unsigned short *pusPSXMem, int iSize,
+ unsigned int cycles)
 {
-    int i;
+ int i;
+ 
+ do_samples_if_needed(cycles, 1);
+ spu.bMemDirty = 1;
 
-    //do_samples_if_needed(cycles, 1);
-    spu.bMemDirty = 1;
+ if(spu.spuAddr + iSize*2 < 0x80000)
+  {
+   memcpy(spu.spuMemC + spu.spuAddr, pusPSXMem, iSize*2);
+   spu.spuAddr += iSize*2;
+   return;
+  }
 
-    for (i = 0; i < iSize; i++)
-    {
-        if (readFromCdData && spu.rvb->StartAddr > 0 &&  spu.spuAddr >= spu.rvb->StartAddr * 2)
-        {
-            // For Vib Ribbon
-            STORE_SWAP16p(spu.spuMemC + spu.spuAddr, *pusPSXMem++);
-        }
-        else
-        {
-            *(unsigned short *)(spu.spuMemC + spu.spuAddr) = *pusPSXMem++;
-        }
-        spu.spuAddr += 2;
-        spu.spuAddr &= 0x7fffe;
-    }
+ for(i=0;i<iSize;i++)
+  {
+   *(unsigned short *)(spu.spuMemC + spu.spuAddr) = *pusPSXMem++;
+   spu.spuAddr += 2;
+   spu.spuAddr &= 0x7fffe;
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////

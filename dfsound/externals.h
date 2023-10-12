@@ -19,11 +19,13 @@
 #define __P_SOUND_EXTERNALS_H__
 
 #include <stdint.h>
-#include "../psxcommon.h"
 
 /////////////////////////////////////////////////////////
 // generic defines
 /////////////////////////////////////////////////////////
+
+//#define log_unhandled printf
+#define log_unhandled(...)
 
 #ifdef __GNUC__
 #define noinline __attribute__((noinline))
@@ -56,10 +58,7 @@
 #define MAXCHAN     24
 
 // note: must be even due to the way reverb works now
-#define NSSIZE ((PS_SPU_FREQ / 50 + 16) & ~1)
-
-#define CDDA_BUFFER_UNIT  16384   //16384
-#define CDDA_BUFFER_SIZE (CDDA_BUFFER_UNIT * sizeof(uint32_t)) // must be power of 2
+#define NSSIZE ((44100 / 50 + 16) & ~1)
 
 ///////////////////////////////////////////////////////////
 // struct defines
@@ -82,13 +81,12 @@ typedef struct
  unsigned char  ReleaseModeExp:1;
  unsigned char  AttackRate;
  unsigned char  DecayRate;
- int            SustainLevel;
+ unsigned char  SustainLevel;
  unsigned char  SustainRate;
  unsigned char  ReleaseRate;
  int            EnvelopeVol;
- int            EnvelopeCounter;
 } ADSRInfoEx;
-
+              
 ///////////////////////////////////////////////////////////
 
 // Tmp Flags
@@ -179,7 +177,6 @@ typedef struct
 // psx buffers / addresses
 
 #define SB_SIZE (32 + 4)
-#define NUM_SPU_BUFFERS 4
 
 typedef struct
 {
@@ -206,14 +203,11 @@ typedef struct
  unsigned int    dwChannelsAudible;    // not silent channels
  unsigned int    dwChannelDead;        // silent+not useful channels
 
- //unsigned char   spuBuffer[NUM_SPU_BUFFERS][32768] __attribute__((aligned(32)));
- //unsigned int    whichBuffer;
-
  unsigned char * pSpuBuffer;
  short         * pS;
 
  void (CALLBACK *irqCallback)(void);   // func of main emu, called on spu irq
- void (CALLBACK *cddavCallback)(unsigned short,unsigned short);
+ void (CALLBACK *cddavCallback)(short, short);
  void (CALLBACK *scheduleCallback)(unsigned int);
 
  xa_decode_t   * xapGlobal;
@@ -229,9 +223,6 @@ typedef struct
 
  unsigned int    XARepeat;
  unsigned int    XALastVal;
-
- unsigned int    CDDARepeat;
- unsigned int    CDDALastVal;
 
  int             iLeftXAVol;
  int             iRightXAVol;
@@ -256,9 +247,11 @@ typedef struct
 // SPU.C globals
 ///////////////////////////////////////////////////////////
 
+#ifndef _IN_SPU
+
 extern SPUInfo spu;
 
-int do_samples(unsigned int cycles_to, int do_sync);
+void do_samples(unsigned int cycles_to, int do_sync);
 void schedule_next_irq(void);
 
 #define do_samples_if_needed(c, sync) \
@@ -266,5 +259,7 @@ void schedule_next_irq(void);
   if (sync || (int)((c) - spu.cycles_played) >= 16 * 768) \
    do_samples(c, sync); \
  } while (0)
+
+#endif
 
 #endif /* __P_SOUND_EXTERNALS_H__ */

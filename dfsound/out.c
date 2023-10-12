@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include "out.h"
 
-#define HAVE_SDL
-#define MAX_OUT_DRIVERS 2
+#define MAX_OUT_DRIVERS 5
 
 static struct out_driver out_drivers[MAX_OUT_DRIVERS];
 struct out_driver *out_current;
@@ -19,11 +18,25 @@ void SetupSound(void)
 	int i;
 
 	if (driver_count == 0) {
+#ifdef HAVE_OSS
+		REGISTER_DRIVER(oss);
+#endif
+#ifdef HAVE_ALSA
+		REGISTER_DRIVER(alsa);
+#endif
 #ifdef HAVE_SDL
 		REGISTER_DRIVER(sdl);
 #endif
-#ifdef HAVE_CUBE
-		REGISTER_DRIVER(cube);
+#ifdef HAVE_PULSE
+		REGISTER_DRIVER(pulse);
+#endif
+#ifdef HAVE_AESND 
+		REGISTER_DRIVER(aesnd);
+#endif
+#ifdef HAVE_LIBRETRO
+		REGISTER_DRIVER(libretro);
+#else
+		REGISTER_DRIVER(none);
 #endif
 	}
 
@@ -32,11 +45,11 @@ void SetupSound(void)
 			break;
 
 	if (i < 0 || i >= driver_count) {
-		//printf("the impossible happened\n");
+		printf("the impossible happened\n");
 		abort();
 	}
 
 	out_current = &out_drivers[i];
-	//printf("selected sound output driver: %s\n", out_current->name);
+	//SysPrintf("selected sound output driver: %s\n", out_current->name);
 }
 

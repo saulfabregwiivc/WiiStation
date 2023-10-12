@@ -39,9 +39,8 @@ typedef struct
  int            ReleaseModeExp;
  unsigned int   ReleaseVal;
  int            ReleaseTime;
- int            ReleaseStartTime;
- int            ReleaseVol;
- int            EnvelopeCounter;
+ int            ReleaseStartTime; 
+ int            ReleaseVol; 
  int            lTime;
  int            lVolume;
 } ADSRInfo;
@@ -59,7 +58,6 @@ typedef struct
  int            ReleaseModeExp;
  int            ReleaseRate;
  int            EnvelopeVol;
- int            EnvelopeCounter;
  int            lVolume;
  int            lDummy1;
  int            lDummy2;
@@ -103,7 +101,7 @@ typedef struct
  int               bNoise;                             // noise active flag
  int               bFMod;                              // freq mod (0=off, 1=sound channel, 2=freq channel)
  int               iRVBNum;                            // another reverb helper
- int               iOldNoise;                          // old noise val for this channel
+ int               iOldNoise;                          // old noise val for this channel   
  ADSRInfo          ADSR;                               // active ADSR settings
  ADSRInfoEx_orig   ADSRX;                              // next ADSR settings (will be moved to active on sample start)
 } SPUCHAN_orig;
@@ -114,8 +112,8 @@ typedef struct
  uint32_t ulFreezeVersion;
  uint32_t ulFreezeSize;
  unsigned char cSPUPort[0x200];
- unsigned char cSPURam[0x80000];
- xa_decode_t   xaS;
+ //unsigned char cSPURam[0x80000];
+ xa_decode_t   xaS;     
 } SPUFreeze_t;
 
 typedef struct
@@ -128,7 +126,7 @@ typedef struct
  uint32_t   dummy2;
  uint32_t   dummy3;
 
- SPUCHAN_orig s_chan[MAXCHAN];
+ SPUCHAN_orig s_chan[MAXCHAN];   
 
 } SPUOSSFreeze_t;
 
@@ -176,7 +174,6 @@ static void save_channel(SPUCHAN_orig *d, const SPUCHAN *s, int ch)
  d->ADSRX.ReleaseModeExp = s->ADSRX.ReleaseModeExp;
  d->ADSRX.ReleaseRate = s->ADSRX.ReleaseRate;
  d->ADSRX.EnvelopeVol = s->ADSRX.EnvelopeVol;
- d->ADSRX.EnvelopeCounter = s->ADSRX.EnvelopeCounter;
  d->ADSRX.lVolume = d->bOn; // hmh
 }
 
@@ -190,8 +187,8 @@ static void load_channel(SPUCHAN *d, const SPUCHAN_orig *s, int ch)
  d->sinc = s->sinc;
  d->sinc_inv = 0;
  memcpy(spu.SB + ch * SB_SIZE, s->SB, sizeof(spu.SB[0]) * SB_SIZE);
- d->pCurr = (void *)((long)s->iCurr & 0x7fff0);
- d->pLoop = (void *)((long)s->iLoop & 0x7fff0);
+ d->pCurr = (void *)((uintptr_t)s->iCurr & 0x7fff0);
+ d->pLoop = (void *)((uintptr_t)s->iLoop & 0x7fff0);
  d->bReverb = s->bReverb;
  d->iLeftVolume = s->iLeftVolume;
  d->iRightVolume = s->iRightVolume;
@@ -212,7 +209,6 @@ static void load_channel(SPUCHAN *d, const SPUCHAN_orig *s, int ch)
  d->ADSRX.ReleaseModeExp = s->ADSRX.ReleaseModeExp;
  d->ADSRX.ReleaseRate = s->ADSRX.ReleaseRate;
  d->ADSRX.EnvelopeVol = s->ADSRX.EnvelopeVol;
- d->ADSRX.EnvelopeCounter = s->ADSRX.EnvelopeCounter;
  if (s->bOn) spu.dwChannelsAudible |= 1<<ch;
  else d->ADSRX.EnvelopeVol = 0;
 }
@@ -222,14 +218,14 @@ static void load_register(unsigned long reg, unsigned int cycles)
 {
  unsigned short *r = &spu.regArea[((reg & 0xfff) - 0xc00) >> 1];
  *r ^= 1;
- DF_SPUwriteRegister(reg, *r ^ 1, cycles);
+ DFS_SPUwriteRegister(reg, *r ^ 1, cycles);
 }
 
 ////////////////////////////////////////////////////////////////////////
 // SPUFREEZE: called by main emu on savestate load/save
 ////////////////////////////////////////////////////////////////////////
 
-long CALLBACK DF_SPUfreeze(unsigned long ulFreezeMode, SPUFreeze_t * pF,
+long CALLBACK DFS_SPUfreeze(uint32_t ulFreezeMode, SPUFreeze_t * pF,
  uint32_t cycles)
 {
  int i;SPUOSSFreeze_t * pFO;
@@ -240,7 +236,7 @@ long CALLBACK DF_SPUfreeze(unsigned long ulFreezeMode, SPUFreeze_t * pF,
 
  if(ulFreezeMode)                                      // info or save?
   {//--------------------------------------------------//
-   if(ulFreezeMode==1)
+   if(ulFreezeMode==1)                                 
     memset(pF,0,sizeof(SPUFreeze_t)+sizeof(SPUOSSFreeze_t));
 
    strcpy(pF->szSPUName,"PBOSS");
@@ -249,20 +245,20 @@ long CALLBACK DF_SPUfreeze(unsigned long ulFreezeMode, SPUFreeze_t * pF,
 
    if(ulFreezeMode==2) return 1;                       // info mode? ok, bye
                                                        // save mode:
-   memcpy(pF->cSPURam,spu.spuMem,0x80000);             // copy common infos
+   //memcpy(pF->cSPURam,spu.spuMem,0x80000);             // copy common infos
    memcpy(pF->cSPUPort,spu.regArea,0x200);
 
    if(spu.xapGlobal && spu.XAPlay!=spu.XAFeed)         // some xa
     {
      pF->xaS=*spu.xapGlobal;
     }
-   else
+   else 
    memset(&pF->xaS,0,sizeof(xa_decode_t));             // or clean xa
 
    pFO=(SPUOSSFreeze_t *)(pF+1);                       // store special stuff
 
    pFO->spuIrq = spu.regArea[(H_SPUirqAddr - 0x0c00) / 2];
-   if(spu.pSpuIrq) pFO->pSpuIrq  = (unsigned long)spu.pSpuIrq-(unsigned long)spu.spuMemC;
+   if(spu.pSpuIrq) pFO->pSpuIrq = spu.pSpuIrq - spu.spuMemC;
 
    pFO->spuAddr=spu.spuAddr;
    if(pFO->spuAddr==0) pFO->spuAddr=0xbaadf00d;
@@ -280,15 +276,15 @@ long CALLBACK DF_SPUfreeze(unsigned long ulFreezeMode, SPUFreeze_t * pF,
    return 1;
    //--------------------------------------------------//
   }
-
+                                                       
  if(ulFreezeMode!=0) return 0;                         // bad mode? bye
 
- memcpy(spu.spuMem,pF->cSPURam,0x80000);               // get ram
+ //memcpy(spu.spuMem,pF->cSPURam,0x80000);               // get ram
  memcpy(spu.regArea,pF->cSPUPort,0x200);
  spu.bMemDirty = 1;
 
  if(pF->xaS.nsamples<=4032)                            // start xa again
-  DF_SPUplayADPCMchannel(&pF->xaS);
+  DFS_SPUplayADPCMchannel(&pF->xaS, spu.cycles_played, 0);
 
  spu.xapGlobal=0;
 
@@ -344,8 +340,8 @@ void LoadStateV5(SPUFreeze_t * pF)
   {
    load_channel(&spu.s_chan[i],&pFO->s_chan[i],i);
 
-   spu.s_chan[i].pCurr+=(unsigned long)spu.spuMemC;
-   spu.s_chan[i].pLoop+=(unsigned long)spu.spuMemC;
+   spu.s_chan[i].pCurr+=(uintptr_t)spu.spuMemC;
+   spu.s_chan[i].pLoop+=(uintptr_t)spu.spuMemC;
   }
 }
 

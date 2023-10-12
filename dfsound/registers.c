@@ -22,7 +22,7 @@
 #include "externals.h"
 #include "registers.h"
 #include "spu_config.h"
-#include "../psxcommon.h"
+#include "spu.h"
 
 static void SoundOn(int start,int end,unsigned short val);
 static void SoundOff(int start,int end,unsigned short val);
@@ -44,7 +44,7 @@ static const uint32_t ignore_dupe[8] = {
  0x7f7f7f7f, 0x7f7f7f7f, 0xff05ff0f, 0xffffffff
 };
 
-void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
+void CALLBACK DFS_SPUwriteRegister(unsigned long reg, unsigned short val,
  unsigned int cycles)
 {
  int r = reg & 0xfff;
@@ -58,7 +58,7 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
  if (val == 0 && (r & 0xff8) == 0xd88)
   return;
 
- //do_samples_if_needed(cycles, 0);
+ do_samples_if_needed(cycles, 0);
 
  if(r>=0x0c00 && r<0x0d80)                             // some channel info?
   {
@@ -66,19 +66,19 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
    switch(r&0x0f)
     {
      //------------------------------------------------// r volume
-     case 0:
+     case 0:                                           
        SetVolumeL((unsigned char)ch,val);
        break;
      //------------------------------------------------// l volume
-     case 2:
+     case 2:                                           
        SetVolumeR((unsigned char)ch,val);
        break;
      //------------------------------------------------// pitch
-     case 4:
+     case 4:                                           
        SetPitch(ch,val);
        goto upd_irq;
      //------------------------------------------------// start
-     case 6:
+     case 6:      
        // taken from regArea later
        break;
      //------------------------------------------------// level with pre-calcs
@@ -89,12 +89,7 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
         spu.s_chan[ch].ADSRX.AttackModeExp=(lval&0x8000)?1:0;
         spu.s_chan[ch].ADSRX.AttackRate=(lval>>8) & 0x007f;
         spu.s_chan[ch].ADSRX.DecayRate=(lval>>4) & 0x000f;
-        //spu.s_chan[ch].ADSRX.SustainLevel=lval & 0x000f;
-        spu.s_chan[ch].ADSRX.SustainLevel = ((lval & 0x000f) + 1) * 0x800;
-        if (spu.s_chan[ch].ADSRX.SustainLevel > 32767)
-        {
-            spu.s_chan[ch].ADSRX.SustainLevel = 32767;
-        }
+        spu.s_chan[ch].ADSRX.SustainLevel=lval & 0x000f;
         //---------------------------------------------//
        }
       break;
@@ -133,10 +128,7 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
       break;
     //-------------------------------------------------//
     case H_SPUdata:
-      // upd by xjsxjs197 start
-      //*(unsigned short *)(spu.spuMemC + spu.spuAddr) = val;
-      STORE_SWAP16p(spu.spuMemC + spu.spuAddr, val);
-      // upd by xjsxjs197 end
+      *(unsigned short *)(spu.spuMemC + spu.spuAddr) = HTOLE16(val);
       spu.spuAddr += 2;
       spu.spuAddr &= 0x7fffe;
       break;
@@ -144,8 +136,8 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
     case H_SPUctrl:
       if (!(spu.spuCtrl & CTRL_IRQ)) {
         spu.spuStat&=~STAT_IRQ;
-        //if (val & CTRL_IRQ)
-        // schedule_next_irq();
+        if (val & CTRL_IRQ)
+         schedule_next_irq();
       }
       spu.spuCtrl=val;
       break;
@@ -169,6 +161,17 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
       spu.rvb->VolRight=val;
       break;
     //-------------------------------------------------//
+
+    case H_SPUmvolL:
+    case H_SPUmvolR:
+      if (val & 0x8000)
+        log_unhandled("w master sweep: %08lx %04x\n", reg, val);
+      break;
+
+    case 0x0dac:
+     if (val != 4)
+       log_unhandled("1f801dac %04x\n", val);
+     break;
 
 /*
     case H_ExtLeft:
@@ -281,8 +284,8 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
  return;
 
 upd_irq:
- //if (spu.spuCtrl & CTRL_IRQ)
- // schedule_next_irq();
+ if (spu.spuCtrl & CTRL_IRQ)
+  schedule_next_irq();
  return;
 
 rvbd:
@@ -293,10 +296,10 @@ rvbd:
 // READ REGISTER: called by main emu
 ////////////////////////////////////////////////////////////////////////
 
-unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
+unsigned short CALLBACK DFS_SPUreadRegister(unsigned long reg)
 {
  const unsigned long r=reg&0xfff;
-
+        
  if(r>=0x0c00 && r<0x0d80)
   {
    switch(r&0x0f)
@@ -305,12 +308,10 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
       {
        const int ch=(r>>4)-0xc0;
        if(spu.dwNewChannel&(1<<ch)) return 1;          // we are started, but not processed? return 1
-       if((spu.dwChannelsAudible&(1<<ch)) &&                 // same here... we haven't decoded one sample yet, so no envelope yet. return 1 as well
-          //!spu.s_chan[ch].ADSRX.EnvelopeVol)
-          spu.s_chan[ch].ADSRX.EnvelopeVol <= 0)
+       if((spu.dwChannelsAudible&(1<<ch)) &&           // same here... we haven't decoded one sample yet, so no envelope yet. return 1 as well
+          !spu.s_chan[ch].ADSRX.EnvelopeVol)
         return 1;
-       //return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol>>16);
-       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol);
+       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol>>16);
       }
 
      case 14:                                          // get loop address
@@ -328,16 +329,13 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
 
     case H_SPUstat:
      return (spu.spuStat & ~0x3F) | (spu.spuCtrl & 0x3F);
-
+        
     case H_SPUaddr:
      return (unsigned short)(spu.spuAddr>>3);
 
     case H_SPUdata:
      {
-      // upd by xjsxjs197 start
-      //unsigned short s = *(unsigned short *)(spu.spuMemC + spu.spuAddr);
-      unsigned short s = LOAD_SWAP16p(spu.spuMemC + spu.spuAddr);
-      // upd by xjsxjs197 end
+      unsigned short s = LE16TOH(*(unsigned short *)(spu.spuMemC + spu.spuAddr));
       spu.spuAddr += 2;
       spu.spuAddr &= 0x7fffe;
       return s;
@@ -348,12 +346,16 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
 
     //case H_SPUIsOn2:
     // return IsSoundOn(16,24);
-
+ 
+    case H_SPUMute1:
+    case H_SPUMute2:
+     log_unhandled("r isOn: %08lx\n", reg);
+     break;
   }
 
  return spu.regArea[(r-0xc00)>>1];
 }
-
+ 
 ////////////////////////////////////////////////////////////////////////
 // SOUND ON register write
 ////////////////////////////////////////////////////////////////////////
@@ -384,12 +386,11 @@ static void SoundOff(int start,int end,unsigned short val)
    if(val&1)
     {
      spu.s_chan[ch].ADSRX.State = ADSR_RELEASE;
-     spu.s_chan[ch].ADSRX.EnvelopeCounter = 0;
 
      // Jungle Book - Rhythm 'n Groove
      // - turns off buzzing sound (loop hangs)
      spu.dwNewChannel &= ~(1<<ch);
-    }
+    }                                                  
   }
 }
 
@@ -405,7 +406,7 @@ static void FModOn(int start,int end,unsigned short val)
   {
    if(val&1)                                           // -> fmod on/off
     {
-     if(ch>0)
+     if(ch>0) 
       {
        spu.s_chan[ch].bFMod=1;                         // --> sound channel
        spu.s_chan[ch-1].bFMod=2;                       // --> freq channel
@@ -446,6 +447,7 @@ static void SetVolumeL(unsigned char ch,short vol)     // LEFT VOLUME
  if(vol&0x8000)                                        // sweep?
   {
    short sInc=1;                                       // -> sweep up?
+   log_unhandled("ch%d sweepl %04x\n", ch, vol);
    if(vol&0x2000) sInc=-1;                             // -> or down?
    if(vol&0x1000) vol^=0xffff;                         // -> mmm... phase inverted? have to investigate this
    vol=((vol&0x7f)+1)/2;                               // -> sweep: 0..127 -> 0..64
@@ -472,13 +474,14 @@ static void SetVolumeR(unsigned char ch,short vol)     // RIGHT VOLUME
  if(vol&0x8000)                                        // comments... see above :)
   {
    short sInc=1;
+   log_unhandled("ch%d sweepr %04x\n", ch, vol);
    if(vol&0x2000) sInc=-1;
    if(vol&0x1000) vol^=0xffff;
-   vol=((vol&0x7f)+1)/2;
+   vol=((vol&0x7f)+1)/2;        
    vol+=vol/(2*sInc);
    vol*=128;
   }
- else
+ else            
   {
    if(vol&0x4000) //vol=vol^=0xffff;
     vol=0x3fff-(vol&0x3fff);
@@ -499,12 +502,10 @@ static void SetPitch(int ch,unsigned short val)               // SET PITCH
  if(val>0x3fff) NP=0x3fff;                             // get pitch val
  else           NP=val;
 
- spu.s_chan[ch].iRawPitch=NP;
- spu.s_chan[ch].sinc=(NP<<4);
- //spu.s_chan[ch].sinc = (PS_SPU_FREQ * NP / WII_SPU_FREQ) << 4;
- spu.s_chan[ch].sinc_inv=0;
- //if (spu_config.iUseInterpolation == 1)
-  spu.SB[ch * SB_SIZE + 32] = 1; // -> freq change in simple interpolation mode: set flag
+ spu.s_chan[ch].iRawPitch = NP;
+ spu.s_chan[ch].sinc = NP << 4;
+ spu.s_chan[ch].sinc_inv = 0;
+ spu.SB[ch * SB_SIZE + 32] = 1; // -> freq change in simple interpolation mode: set flag
 
  // don't mess spu.dwChannelsAudible as adsr runs independently
 }

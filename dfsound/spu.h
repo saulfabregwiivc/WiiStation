@@ -18,8 +18,16 @@
 #ifndef __P_SPU_H__
 #define __P_SPU_H__
 
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define HTOLE16(x) __builtin_bswap16(x)
+#define LE16TOH(x) __builtin_bswap16(x)
+#else
+#define HTOLE16(x) (x)
+#define LE16TOH(x) (x)
+#endif
+
 void ClearWorkingState(void);
-void CALLBACK DF_SPUplayADPCMchannel(xa_decode_t *xap);
-int  CALLBACK DF_SPUplayCDDAchannel(short *pcm, int bytes);
+void CALLBACK SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int is_start);
+int  CALLBACK SPUplayCDDAchannel(short *pcm, int bytes, unsigned int cycle, int is_start);
 
 #endif /* __P_SPU_H__ */

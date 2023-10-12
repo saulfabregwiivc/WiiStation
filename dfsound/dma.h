@@ -27,9 +27,9 @@
 #ifndef __P_DMA_H__
 #define __P_DMA_H__
 
-unsigned short DF_SPUreadDMA(void);
-void DF_SPUreadDMAMem(unsigned short * pusPSXMem,int iSize);
-void DF_SPUwriteDMA(unsigned short val);
-void DF_SPUwriteDMAMem(unsigned short * pusPSXMem,int iSize);
+unsigned short CALLBACK SPUreadDMA(void);
+void CALLBACK SPUreadDMAMem(unsigned short * pusPSXMem,int iSize);
+void CALLBACK SPUwriteDMA(unsigned short val);
+void CALLBACK SPUwriteDMAMem(unsigned short * pusPSXMem,int iSize);
 
 #endif /* __P_DMA_H__ */

@@ -6,11 +6,10 @@ struct out_driver {
 	int (*init)(void);
 	void (*finish)(void);
 	int (*busy)(void);
-	int (*feed)(void *data, int bytes);
+	void (*feed)(void *data, int bytes);
 };
 
 extern struct out_driver *out_current;
-extern int        iDisStereo;
 
 void SetupSound(void);
 

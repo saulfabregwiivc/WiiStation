@@ -155,6 +155,6 @@
 
 ///////////////////////////////////////////////////////////
 
-void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val, unsigned int cycles);
+void CALLBACK SPUwriteRegister(unsigned long reg, unsigned short val, unsigned int cycles);
 
 #endif /* __P_REGISTERS_H__ */
