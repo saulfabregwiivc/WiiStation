@@ -50,7 +50,7 @@ static const struct
 hack_db[] =
 {
     HACK_ENTRY(cdr_read_timing, cdr_read_hack_db),
-    HACK_ENTRY(gpu_slow_list_walking, gpu_slow_llist_db),
+//  HACK_ENTRY(gpu_slow_list_walking, gpu_slow_llist_db),
 };
 
 static const struct
@@ -205,6 +205,7 @@ void Apply_Hacks_Cdrom()
         }
     }
 
+    /* Apply Lightrec hacks */
     lightrec_hacks = 0;
 
     for (i = 0; (Config.Cpu == DYNACORE_DYNAREC) && i < ARRAY_SIZE(lightrec_hacks_db); i++) {
@@ -212,6 +213,19 @@ void Apply_Hacks_Cdrom()
         {
             lightrec_hacks = lightrec_hacks_db[i].hacks;
             SysPrintf("using lightrec_hacks: 0x%x\n", lightrec_hacks);
+            break;
+        }
+    }
+
+    /* GPU slow linked list hack */
+    Config.GpuListWalking = 0;
+
+    for (i = 0; i < ARRAY_SIZE(gpu_slow_llist_db); i++) {
+        if (strcmp(CdromId, gpu_slow_llist_db[i]) == 0)
+        {
+            Config.GpuListWalking = 1;
+            Config.hacks.gpu_slow_list_walking = 1;
+            SysPrintf("using GPU slow linked list hack\n", Config.GpuListWalking);
             break;
         }
     }
