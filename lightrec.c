@@ -429,6 +429,8 @@ static int lightrec_plugin_init(void)
 
 	lightrec_set_unsafe_opt_flags(lightrec_state, lightrec_hacks);
 
+	use_lightrec_interpreter = !!getenv("LIGHTREC_INTERPRETER");
+
 	signal(SIGPIPE, exit);
 
 	return 0;
