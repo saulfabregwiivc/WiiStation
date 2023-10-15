@@ -57,7 +57,7 @@ typedef void (CALLBACK* GPUwriteDataMem)(unsigned long *, int);
 typedef uint32_t (CALLBACK* GPUreadStatus)(void);
 typedef uint32_t (CALLBACK* GPUreadData)(void);
 typedef void (CALLBACK* GPUreadDataMem)(unsigned long *, int);
-typedef long (CALLBACK* GPUdmaChain)(uint32_t *,uint32_t);
+typedef long (CALLBACK* GPUdmaChain)(uint32_t *,uint32_t, uint32_t *);
 typedef void (CALLBACK* GPUupdateLace)(void);
 typedef long (CALLBACK* GPUconfigure)(void);
 typedef long (CALLBACK* GPUtest)(void);

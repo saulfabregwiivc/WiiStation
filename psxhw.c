@@ -545,6 +545,8 @@ void psxHwWrite16(u32 add, u16 value) {
 
 // upd xjsxjs197 start
 /*#define DmaExec(n) { \
+	if (value & SWAPu32(HW_DMA##n##_CHCR) & 0x01000000) \
+		log_unhandled("dma" #n " %08x -> %08x\n", HW_DMA##n##_CHCR, value); \
 	if (SWAPu32(HW_DMA##n##_CHCR) & 0x01000000) return; \
 	HW_DMA##n##_CHCR = SWAPu32(value); \
  \

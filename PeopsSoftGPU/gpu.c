@@ -1525,7 +1525,7 @@ __inline BOOL CheckForEndlessLoop(unsigned long laddr)
  return FALSE;
 }
 
-long PEOPS_GPUdmaChain(unsigned long * baseAddrL, unsigned long addr)
+long PEOPS_GPUdmaChain(unsigned long * baseAddrL, unsigned long addr, unsigned long * progress_addr)
 {
  unsigned char * baseAddrB;
  unsigned int DMACommandCounter = 0;
@@ -1556,6 +1556,11 @@ long PEOPS_GPUdmaChain(unsigned long * baseAddrL, unsigned long addr)
    if(count>0) PEOPS_GPUwriteDataMem(&baseAddrL[dmaMem>>2],count);
 
    addr = GETLE32(&baseAddrL[addr>>2])&0xffffff;
+
+   if (progress_addr) {
+     *progress_addr = addr;
+     break;
+   }
   }
  while (addr != 0xffffff);
 

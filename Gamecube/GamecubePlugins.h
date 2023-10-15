@@ -173,7 +173,7 @@ void PEOPS_GPUwriteDataMem(unsigned long *, int);
 unsigned long PEOPS_GPUreadStatus(void);
 unsigned long PEOPS_GPUreadData(void);
 void PEOPS_GPUreadDataMem(unsigned long *, int);
-long PEOPS_GPUdmaChain(unsigned long *,unsigned long);
+long PEOPS_GPUdmaChain(unsigned long *,unsigned long, unsigned long *);
 void PEOPS_GPUupdateLace(void);
 void PEOPS_GPUdisplayText(char *);
 long PEOPS_GPUfreeze(unsigned long,GPUFreeze_t *);
