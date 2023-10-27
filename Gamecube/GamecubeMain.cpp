@@ -267,7 +267,7 @@ void loadSettings(int argc, char *argv[])
 	Config.Xa = 0;  //XA enabled
 	Config.Cdda = 0; //CDDA enabled
 	Config.cycle_multiplier = CYCLE_MULT_DEFAULT;
-	Config.GpuListWalking = 0; //disabled
+	Config.GpuListWalking = -1;
 	iVolume = volume; //Volume="medium" in PEOPSspu
 	Config.PsxAuto = 1; //Autodetect
 	LoadCdBios = BOOTTHRUBIOS_NO;
