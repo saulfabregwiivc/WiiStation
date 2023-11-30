@@ -512,6 +512,36 @@ int Load(fileBrowser_file *exe) {
 }
 
 // STATES
+
+static void *zlib_open(const char *name, const char *mode)
+{
+	return gzopen(name, mode);
+}
+
+static int zlib_read(void *file, void *buf, u32 len)
+{
+	return gzread(file, buf, len);
+}
+
+static int zlib_write(void *file, const void *buf, u32 len)
+{
+	return gzwrite(file, buf, len);
+}
+
+static long zlib_seek(void *file, long offs, int whence)
+{
+	return gzseek(file, offs, whence);
+}
+
+static void zlib_close(void *file)
+{
+	gzclose(file);
+}
+
+struct PcsxSaveFuncs SaveFuncs = {
+	zlib_open, zlib_read, zlib_write, zlib_seek, zlib_close
+};
+
 void LoadingBar_showBar(float percent, const char* string);
 const char PcsxHeader[32] = "STv3 PCSX v";
 char* statespath = "/wiisxrx/savestates/";
@@ -521,9 +551,21 @@ extern unsigned char  *psxVub;
 //extern unsigned short  spuMem[256*1024];
 extern unsigned char  spuMem[512 * 1024];
 // upd xjsxjs197 end
-#define iGPUHeight 512
+//#define iGPUHeight 512
 #define SAVE_STATE_MSG "Saving State .."
 #define LOAD_STATE_MSG "Loading State .."
+
+#define MISC_MAGIC 0x4353494d
+struct misc_save_data {
+	u32 magic;
+	u32 gteBusyCycle;
+	u32 muldivBusyCycle;
+	u32 biuReg;
+	u32 biosBranchCheck;
+	u32 gpuIdleAfter;
+	u32 gpuSr;
+	u32 frame_counter;
+};
 
 void savestates_select_slot(unsigned int s)
 {
@@ -534,13 +576,27 @@ void savestates_select_slot(unsigned int s)
 }
 
 int SaveState() {
-
-  gzFile f;
-  GPUFreeze_t *gpufP;
+	struct misc_save_data *misc = (void *)(psxH + 0xf000);
+	gzFile f;
+	GPUFreeze_t *gpufP;
+	SPUFreezeHdr_t spufH;
 	SPUFreeze_t *spufP;
-	int Size;
 	unsigned char *pMem;
 	char *filename;
+	int result = -1;
+	int Size;
+
+	assert(!psxRegs.branching);
+	assert(!psxRegs.cpuInRecursion);
+	assert(!misc->magic);
+	misc->magic = MISC_MAGIC;
+	misc->gteBusyCycle = psxRegs.gteBusyCycle;
+	misc->muldivBusyCycle = psxRegs.muldivBusyCycle;
+	misc->biuReg = psxRegs.biuReg;
+	misc->biosBranchCheck = psxRegs.biosBranchCheck;
+	misc->gpuIdleAfter = psxRegs.gpuIdleAfter;
+	misc->gpuSr = HW_GPU_STATUS;
+	misc->frame_counter = frame_counter;
 
   /* fix the filename to %s.st%u format */
 	filename = malloc(1024);
@@ -552,7 +608,7 @@ int SaveState() {
   sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
 #endif
 
-	f = gzopen(filename, "wb");
+	f = SaveFuncs.open(filename, "wb");
   free(filename);
 
   if(!f) {
@@ -565,45 +621,46 @@ int SaveState() {
   pauseRemovalThread();
   GPU_updateLace();
 
-	gzwrite(f, (void*)PcsxHeader, 32);
+	SaveFuncs.write(f, (void*)PcsxHeader, 32);
 
 	pMem = (unsigned char *) malloc(128*96*3);
 	if (pMem == NULL) return -1;
 	GPU_getScreenPic(pMem);
-	gzwrite(f, pMem, 128*96*3);
+	SaveFuncs.write(f, pMem, 128*96*3);
 	free(pMem);
 
 	if (Config.HLE) {
 		psxBiosFreeze(1);
 	}
   LoadingBar_showBar(0.10f, SAVE_STATE_MSG);
-	gzwrite(f, psxM, 0x00200000);
+	SaveFuncs.write(f, psxM, 0x00200000);
 	LoadingBar_showBar(0.40f, SAVE_STATE_MSG);
-	gzwrite(f, psxR, 0x00080000);
+	SaveFuncs.write(f, psxR, 0x00080000);
 	LoadingBar_showBar(0.60f, SAVE_STATE_MSG);
-	gzwrite(f, psxH, 0x00010000);
-	gzwrite(f, (void*)&psxRegs, sizeof(psxRegs));
+	SaveFuncs.write(f, psxH, 0x00010000);
+	// only partial save of psxRegisters to maintain savestate compat
+	SaveFuncs.write(f, &psxRegs, offsetof(psxRegisters, gteBusyCycle));
   LoadingBar_showBar(0.70f, SAVE_STATE_MSG);
+
 	// gpu
 	gpufP = (GPUFreeze_t *) malloc(sizeof(GPUFreeze_t));
+	if (gpufP == NULL) return -1;
 	gpufP->ulFreezeVersion = 1;
 	GPU_freeze(1, gpufP);
-	gzwrite(f, gpufP, sizeof(GPUFreeze_t));
-	free(gpufP);
-	// gpu VRAM save (save directly to save memory)
-	gzwrite(f, &psxVub[0], 1024*iGPUHeight*2);
+	SaveFuncs.write(f, gpufP, sizeof(GPUFreeze_t));
+	free(gpufP); gpufP = NULL;
   LoadingBar_showBar(0.80f, SAVE_STATE_MSG);
+
 	// spu
-	spufP = (SPUFreeze_t *) malloc(16);
-	SPU_freeze(2, spufP, psxRegs.cycle);
-	Size = spufP->ulFreezeSize; gzwrite(f, &Size, 4);
-	free(spufP);
+	SPU_freeze(2, (SPUFreeze_t *)&spufH, psxRegs.cycle);
+	Size = spufH.ulFreezeSize; SaveFuncs.write(f, &Size, 4);
 	spufP = (SPUFreeze_t *) malloc(Size);
+	if (spufP == NULL) return -1;
 	SPU_freeze(1, spufP, psxRegs.cycle);
-	gzwrite(f, spufP, Size);
-	free(spufP);
+	SaveFuncs.write(f, spufP, Size);
+	free(spufP); spufP = NULL;
   // spu spuMem save (save directly to save memory)
-  //gzwrite(f, spu.spuMemC, 0x80000);
+  //SaveFuncs.write(f, spu.spuMemC, 0x80000);
   LoadingBar_showBar(0.90f, SAVE_STATE_MSG);
 
 	sioFreeze(f, 1);
@@ -612,9 +669,12 @@ int SaveState() {
 	psxRcntFreeze(f, 1);
 	mdecFreeze(f, 1);
 	//new_dyna_freeze(f, 1);
+	//padFreeze(f, 1);
+
+	result = 0;
 
   LoadingBar_showBar(0.99f, SAVE_STATE_MSG);
-	gzclose(f);
+	SaveFuncs.close(f);
 
 	continueRemovalThread();
   LoadingBar_showBar(1.0f, SAVE_STATE_MSG);
@@ -622,9 +682,11 @@ int SaveState() {
 }
 
 int LoadState() {
+	struct misc_save_data *misc = (void *)(psxH + 0xf000);
+	u32 biosBranchCheckOld = psxRegs.biosBranchCheck;
 	gzFile f;
-	GPUFreeze_t *gpufP;
-	SPUFreeze_t *spufP;
+	GPUFreeze_t *gpufP = NULL;
+	SPUFreeze_t *spufP = NULL;
 	int Size;
 	char header[32];
 	char *filename;
@@ -638,7 +700,7 @@ int LoadState() {
   sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
 #endif
 
-	f = gzopen(filename, "rb");
+	f = SaveFuncs.open(filename, "rb");
   free(filename);
 
   if(!f) {
@@ -651,18 +713,31 @@ int LoadState() {
 
 	psxCpu->Reset();
   LoadingBar_showBar(0.10f, LOAD_STATE_MSG);
-	gzread(f, header, 32);
+	SaveFuncs.read(f, header, 32);
 
-	if (strncmp("STv3 PCSX", header, 9)) { gzclose(f); return -1; }
+	if (strncmp("STv3 PCSX", header, 9)) { SaveFuncs.close(f); return -1; }
 
-	gzseek(f, 128*96*3, SEEK_CUR);
+	SaveFuncs.seek(f, 128*96*3, SEEK_CUR);
 
-	gzread(f, psxM, 0x00200000);
+	SaveFuncs.read(f, psxM, 0x00200000);
 	LoadingBar_showBar(0.40f, LOAD_STATE_MSG);
-	gzread(f, psxR, 0x00080000);
+	SaveFuncs.read(f, psxR, 0x00080000);
 	LoadingBar_showBar(0.60f, LOAD_STATE_MSG);
-	gzread(f, psxH, 0x00010000);
-	gzread(f, (void*)&psxRegs, sizeof(psxRegs));
+	SaveFuncs.read(f, psxH, 0x00010000);
+	SaveFuncs.read(f, &psxRegs, offsetof(psxRegisters, gteBusyCycle));
+	psxRegs.gteBusyCycle = psxRegs.cycle;
+	psxRegs.biosBranchCheck = ~0;
+	psxRegs.gpuIdleAfter = psxRegs.cycle - 1;
+	HW_GPU_STATUS &= SWAP32(~PSXGPU_nBUSY);
+	if (misc->magic == MISC_MAGIC) {
+		psxRegs.gteBusyCycle = misc->gteBusyCycle;
+		psxRegs.muldivBusyCycle = misc->muldivBusyCycle;
+		psxRegs.biuReg = misc->biuReg;
+		psxRegs.biosBranchCheck = misc->biosBranchCheck;
+		psxRegs.gpuIdleAfter = misc->gpuIdleAfter;
+		HW_GPU_STATUS = misc->gpuSr;
+		frame_counter = misc->frame_counter;
+	}
   LoadingBar_showBar(0.70f, LOAD_STATE_MSG);
 
 	psxCpu->Notify(R3000ACPU_NOTIFY_AFTER_LOAD, NULL);
@@ -672,23 +747,20 @@ int LoadState() {
 
 	// gpu
 	gpufP = (GPUFreeze_t *) malloc (sizeof(GPUFreeze_t));
-	gzread(f, gpufP, sizeof(GPUFreeze_t));
+	if (gpufP == NULL) return -1;
+	SaveFuncs.read(f, gpufP, sizeof(GPUFreeze_t));
 	GPU_freeze(0, gpufP);
 	free(gpufP);
-	if (HW_GPU_STATUS == 0)
-		HW_GPU_STATUS = SWAP32(GPU_readStatus());
-	// gpu VRAM load (load directly to save memory)
-	gzread(f, &psxVub[0], 1024*iGPUHeight*2);
+	gpuSyncPluginSR();
 	LoadingBar_showBar(0.80f, LOAD_STATE_MSG);
 
 	// spu
-	gzread(f, &Size, 4);
+	SaveFuncs.read(f, &Size, 4);
 	spufP = (SPUFreeze_t *) malloc (Size);
-	gzread(f, spufP, Size);
+	if (spufP == NULL) return -1;
+	SaveFuncs.read(f, spufP, Size);
 	SPU_freeze(0, spufP, psxRegs.cycle);
 	free(spufP);
-  // spu spuMem save (save directly to save memory)
-  //gzread(f, spu.spuMemC, 0x80000);
   LoadingBar_showBar(0.99f, LOAD_STATE_MSG);
 
 	sioFreeze(f, 0);
@@ -697,8 +769,9 @@ int LoadState() {
 	psxRcntFreeze(f, 0);
 	mdecFreeze(f, 0);
 	//new_dyna_freeze(f, 0);
+	//padFreeze(f, 0);
 
-	gzclose(f);
+	SaveFuncs.close(f);
   continueRemovalThread();
   LoadingBar_showBar(1.0f, LOAD_STATE_MSG);
 
@@ -709,14 +782,14 @@ int CheckState(char *file) {
 	gzFile f;
 	char header[32];
 
-	f = gzopen(file, "rb");
+	f = SaveFuncs.open(file, "rb");
 	if (f == NULL) return -1;
 
 	psxCpu->Reset();
 
-	gzread(f, header, 32);
+	SaveFuncs.read(f, header, 32);
 
-	gzclose(f);
+	SaveFuncs.close(f);
 
 	if (strncmp("STv3 PCSX", header, 9)) return -1;
 

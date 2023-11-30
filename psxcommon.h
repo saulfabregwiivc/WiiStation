@@ -42,7 +42,7 @@
 //#include <glib.h>
 
 /* Define types */
-/*typedef int8_t s8;
+typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
@@ -53,7 +53,9 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uintptr_t uptr;
-*/
+
+typedef uint8_t boolean;
+
 /* Local includes */
 #include "system.h"
 #include "coredebug.h"
@@ -138,11 +140,19 @@ extern int StatesC;
 extern int cdOpenCase;
 extern int NetOpened;
 
-#define gzfreeze(ptr, size) \
-	if (Mode == 1) gzwrite(f, ptr, size); \
-	if (Mode == 0) gzread(f, ptr, size);
+struct PcsxSaveFuncs {
+	void *(*open)(const char *name, const char *mode);
+	int   (*read)(void *file, void *buf, u32 len);
+	int   (*write)(void *file, const void *buf, u32 len);
+	long  (*seek)(void *file, long offs, int whence);
+	void  (*close)(void *file);
+};
+extern struct PcsxSaveFuncs SaveFuncs;
 
-#define gzfreezel(ptr) gzfreeze(ptr, sizeof(ptr))
+#define gzfreeze(ptr, size) { \
+	if (Mode == 1) SaveFuncs.write(f, ptr, size); \
+	if (Mode == 0) SaveFuncs.read(f, ptr, size); \
+}
 
 //#define BIAS	1
 #define BIAS	2

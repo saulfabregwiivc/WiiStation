@@ -21,6 +21,8 @@
 * SIO functions.
 */
 
+#include "misc.h"
+#include "psxcounters.h"
 #include "sio.h"
 #include "Gamecube/fileBrowser/fileBrowser.h"
 #include "Gamecube/fileBrowser/fileBrowser-libfat.h"
@@ -663,19 +665,19 @@ void ConvertMcd(char *mcd, char *data) {
 int sioFreeze(gzFile f, int Mode) {
 	char Unused[4096];
 
-	gzfreezel(buf);
-	gzfreezel(&StatReg);
-	gzfreezel(&ModeReg);
-	gzfreezel(&CtrlReg);
-	gzfreezel(&BaudReg);
-	gzfreezel(&bufcount);
-	gzfreezel(&parp);
-	gzfreezel(&mcdst);
-	gzfreezel(&rdwr);
-	gzfreezel(&adrH);
-	gzfreezel(&adrL);
-	gzfreezel(&padst);
-	gzfreezel(Unused);
+	gzfreeze(buf, sizeof(buf));
+	gzfreeze(&StatReg, sizeof(StatReg));
+	gzfreeze(&ModeReg, sizeof(ModeReg));
+	gzfreeze(&CtrlReg, sizeof(CtrlReg));
+	gzfreeze(&BaudReg, sizeof(BaudReg));
+	gzfreeze(&bufcount, sizeof(bufcount));
+	gzfreeze(&parp, sizeof(parp));
+	gzfreeze(&mcdst, sizeof(mcdst));
+	gzfreeze(&rdwr, sizeof(rdwr));
+	gzfreeze(&adrH, sizeof(adrH));
+	gzfreeze(&adrL, sizeof(adrL));
+	gzfreeze(&padst, sizeof(padst));
+	gzfreeze(Unused, sizeof(Unused));
 
 	return 0;
 }

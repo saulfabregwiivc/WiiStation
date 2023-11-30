@@ -261,9 +261,10 @@ static void StartSoundMain(int ch)
  StartADSR(ch);
  StartREVERB(ch);
 
- s_chan->prevflags=2;
- s_chan->iSBPos=27;
- s_chan->spos=0;
+ s_chan->prevflags = 2;
+ s_chan->iSBPos = 27;
+ s_chan->spos = 0;
+ s_chan->bStarting = 1;
 
  s_chan->pCurr = spu.spuMemC + ((regAreaGetCh(ch, 6) & ~1) << 3);
 
@@ -437,8 +438,11 @@ static int decode_block(void *unused, int ch, int *SB)
  int ret = 0;
 
  start = s_chan->pCurr;                    // set up the current pos
- if (start == spu.spuMemC)                 // ?
+ if (start - spu.spuMemC < 0x1000) {       // ?
+  //log_unhandled("ch%02d plays decode bufs @%05lx\n",
+  //  ch, (long)(start - spu.spuMemC));
   ret = 1;
+ }
 
  if (s_chan->prevflags & 1)                // 1: stop/loop
  {
@@ -464,6 +468,7 @@ static int decode_block(void *unused, int ch, int *SB)
 
  s_chan->pCurr = start;                    // store values for next cycle
  s_chan->prevflags = flags;
+ s_chan->bStarting = 0;
 
  return ret;
 }
@@ -493,6 +498,7 @@ static int skip_block(int ch)
 
  s_chan->pCurr = start;
  s_chan->prevflags = flags;
+ s_chan->bStarting = 0;
 
  return ret;
 }
@@ -810,13 +816,14 @@ static void do_channels(int ns_to)
     d = do_samples_default(decode_block, NULL, ch, ns_to,
           SB, sinc, &s_chan->spos, &s_chan->iSBPos);
 
-   d = MixADSR(&s_chan->ADSRX, d);
-   if (d < ns_to) {
-    spu.dwChannelsAudible &= ~(1 << ch);
-    s_chan->ADSRX.State = ADSR_RELEASE;
-    s_chan->ADSRX.EnvelopeVol = 0;
-    s_chan->ADSRX.EnvelopeCounter = 0;
-    memset(&ChanBuf[d], 0, (ns_to - d) * sizeof(ChanBuf[0]));
+   if (!s_chan->bStarting) {
+    d = MixADSR(&s_chan->ADSRX, d);
+    if (d < ns_to) {
+     spu.dwChannelsAudible &= ~(1 << ch);
+     s_chan->ADSRX.State = ADSR_RELEASE;
+     s_chan->ADSRX.EnvelopeVol = 0;
+     memset(&ChanBuf[d], 0, (ns_to - d) * sizeof(ChanBuf[0]));
+    }
    }
 
    if (ch == 1 || ch == 3)
@@ -939,7 +946,11 @@ void do_samples(unsigned int cycles_to, int do_direct)
   spu.cycles_played += ns_to * 768;
   spu.decode_pos = (spu.decode_pos + ns_to) & 0x1ff;
 
-  return ns_to;
+#if 0
+  static int ccount; static time_t ctime; ccount++;
+  if (time(NULL) != ctime)
+    { printf("%d\n", ccount); ccount = 0; ctime = time(NULL); }
+#endif
 }
 
 static void do_samples_finish(int *SSumLR, int ns_to,

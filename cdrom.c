@@ -783,9 +783,7 @@ void cdrPlayReadInterrupt(void)
 	if (!cdr.IrqStat && (cdr.Mode & (MODE_AUTOPAUSE|MODE_REPORT)))
 		cdrPlayInterrupt_Autopause(read_buf);
 
-	if (!cdr.Play) return;
-
-	if (!cdr.Muted && !Config.Cdda) {
+	if (!cdr.Muted && cdr.Play && !Config.Cdda) {
         #ifdef SHOW_DEBUG
         sprintf(txtbuffer, "CDR_readCDDA time %d %d %d", cdr.SetSectorPlay[0], cdr.SetSectorPlay[1], cdr.SetSectorPlay[2]);
         DEBUG_print(txtbuffer, DBG_CDR2);
@@ -1902,8 +1900,6 @@ int cdrFreeze(gzFile f, int Mode) {
 }
 
 void LidInterrupt() {
-	SetCdOpenCaseTime(time(NULL) + 2);
-
 	getCdInfo();
 	StopCdda();
 

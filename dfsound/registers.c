@@ -152,8 +152,8 @@ void CALLBACK DF_SPUwriteRegister(unsigned long reg, unsigned short val,
     case H_SPUctrl:
       spu.spuStat &= ~STAT_IRQ | val;
       if (!(spu.spuCtrl & CTRL_IRQ)) {
-        //if (val & CTRL_IRQ)
-        // schedule_next_irq();
+        if (val & CTRL_IRQ)
+         schedule_next_irq();
       }
       spu.spuCtrl=val;
       break;
@@ -317,7 +317,7 @@ rvbd:
 // READ REGISTER: called by main emu
 ////////////////////////////////////////////////////////////////////////
 
-unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
+unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg, unsigned int cycles)
 {
  const unsigned long r = reg & 0xffe;
         
@@ -327,14 +327,13 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
     {
      case 12:                                          // get adsr vol
       {
-       const int ch=(r>>4)-0xc0;
-       if(spu.dwNewChannel&(1<<ch)) return 1;          // we are started, but not processed? return 1
-       if((spu.dwChannelsAudible&(1<<ch)) &&                 // same here... we haven't decoded one sample yet, so no envelope yet. return 1 as well
-          //!spu.s_chan[ch].ADSRX.EnvelopeVol)
-          spu.s_chan[ch].ADSRX.EnvelopeVol <= 0)
-        return 1;
-       //return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol>>16);
-       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol);
+       // this used to return 1 immediately after keyon to deal with
+       // some poor timing, but that causes Rayman 2 to lose track of
+       // it's channels on busy scenes and start looping some of them forever
+       const int ch = (r>>4) - 0xc0;
+       if (spu.s_chan[ch].bStarting)
+        do_samples_if_needed(cycles, 0, 2);
+       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol >> 16);
       }
 
      case 14:                                          // get loop address
@@ -397,6 +396,7 @@ static void SoundOn(int start,int end,unsigned short val)
    if((val&1) && regAreaGetCh(ch, 6))                  // mmm... start has to be set before key on !?!
     {
      spu.s_chan[ch].bIgnoreLoop = 0;
+     spu.s_chan[ch].bStarting = 1;
      spu.dwNewChannel|=(1<<ch);
     }
   }
@@ -409,12 +409,11 @@ static void SoundOn(int start,int end,unsigned short val)
 static void SoundOff(int start,int end,unsigned short val)
 {
  int ch;
- for(ch=start;ch<end;ch++,val>>=1)                     // loop channels
+ for (ch = start; val && ch < end; ch++, val >>= 1)    // loop channels
   {
    if(val&1)
     {
      spu.s_chan[ch].ADSRX.State = ADSR_RELEASE;
-     spu.s_chan[ch].ADSRX.EnvelopeCounter = 0;
 
      // Jungle Book - Rhythm 'n Groove
      // - turns off buzzing sound (loop hangs)
@@ -532,7 +531,7 @@ static void SetPitch(int ch,unsigned short val)               // SET PITCH
  spu.s_chan[ch].iRawPitch = NP;
  spu.s_chan[ch].sinc = NP << 4;
  spu.s_chan[ch].sinc_inv = 0;
- spu.s_chan[ch].bNewPitch = 1;
+ //spu.s_chan[ch].bNewPitch = 1;
 
  // don't mess spu.dwChannelsAudible as adsr runs independently
 }

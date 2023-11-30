@@ -114,7 +114,7 @@ void FRAN_SPU_registerCDDAVolume(void (*CDDAVcallback)(unsigned short,unsigned s
 
 /* dfsound */
 void DF_SPUwriteRegister(unsigned long reg, unsigned short val, unsigned int cycles);
-unsigned short DF_SPUreadRegister(unsigned long reg);
+unsigned short DF_SPUreadRegister(unsigned long reg, unsigned int cycles);
 unsigned short DF_SPUreadDMA(void);
 void DF_SPUreadDMAMem(unsigned short * pusPSXMem,int iSize, unsigned int cycles);
 void DF_SPUwriteDMA(unsigned short val);

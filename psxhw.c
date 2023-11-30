@@ -139,7 +139,7 @@ u8 psxHwRead8(u32 add) {
         case 0x1803: hard = cdrRead3(); break;
         default:
 		    if (chkAddr >= 0x1c00 && chkAddr < 0x2000) {
-                u16 val = SPU_readRegister(add & ~1);
+                u16 val = SPU_readRegister(add & ~1, psxRegs.cycle);
 				hard = (add & 1) ? val >> 8 : val;
 				break;
             }
@@ -269,7 +269,7 @@ u16 psxHwRead16(u32 add) {
 
         default:
             if (chkAddr >= 0x1c00 && chkAddr < 0x2000) {
-                hard = SPU_readRegister(add);
+                hard = SPU_readRegister(add, psxRegs.cycle);
             } else {
                 hard = LOAD_SWAP16p(psxHAddr(add));
 #ifdef PSXHW_LOG
@@ -423,8 +423,8 @@ u32 psxHwRead32(u32 add) {
 
 		default:
             if (chkAddr >= 0x1c00 && chkAddr < 0x2000) {
-                hard = SPU_readRegister(add);
-				hard |= SPU_readRegister(add + 2) << 16;
+                hard = SPU_readRegister(add, psxRegs.cycle);
+				hard |= SPU_readRegister(add + 2, psxRegs.cycle) << 16;
 				return hard;
             }
 			hard = LOAD_SWAP32p(psxHAddr(add));

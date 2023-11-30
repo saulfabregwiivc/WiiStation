@@ -120,6 +120,7 @@ typedef struct
  unsigned int      prevflags:3;                        // flags from previous block
  unsigned int      bIgnoreLoop:1;                      // Ignore loop
  unsigned int      bNewPitch:1;                        // pitch changed
+ unsigned int      bStarting:1;                        // starting after keyon
  union {
   struct {
    int             iLeftVolume;                        // left volume

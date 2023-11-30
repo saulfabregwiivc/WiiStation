@@ -41,7 +41,7 @@ int  LoadPlugins();
 void ReleasePlugins();
 int  OpenPlugins();
 void ClosePlugins();
-
+int ReloadCdromPlugin();
 
 typedef unsigned long (CALLBACK* PSEgetLibType)(void);
 typedef unsigned long (CALLBACK* PSEgetLibVersion)(void);
@@ -180,7 +180,7 @@ typedef void (CALLBACK* SPUsetVolumeL)(unsigned char, short );
 typedef void (CALLBACK* SPUsetVolumeR)(unsigned char, short );
 //psemu pro 2 functions from now..
 typedef void (CALLBACK* SPUwriteRegister)(unsigned long, unsigned short, unsigned int);
-typedef unsigned short (CALLBACK* SPUreadRegister)(unsigned long);
+typedef unsigned short (CALLBACK* SPUreadRegister)(unsigned long, unsigned int);
 typedef void (CALLBACK* SPUwriteDMA)(unsigned short);
 typedef unsigned short (CALLBACK* SPUreadDMA)(void);
 typedef void (CALLBACK* SPUwriteDMAMem)(unsigned short *, int, unsigned int);
@@ -193,6 +193,11 @@ typedef void (CALLBACK* SPUregisterCDDAVolume)(void (*CDDAVcallback)(unsigned sh
 typedef long (CALLBACK* SPUconfigure)(void);
 typedef long (CALLBACK* SPUtest)(void);
 typedef void (CALLBACK* SPUabout)(void);
+typedef struct {
+	unsigned char PluginName[8];
+	uint32_t ulFreezeVersion;
+	uint32_t ulFreezeSize;
+} SPUFreezeHdr_t;
 typedef struct
 {
  char          szSPUName[8];
@@ -333,6 +338,11 @@ int LoadPAD2plugin(char *PAD2dll);
 int LoadNETplugin(char *NETdll);
 
 void CALLBACK clearDynarec(void);
+
+void SetIsoFile(const char *filename);
+const char *GetIsoFile(void);
+boolean UsingIso(void);
+void SetCdOpenCaseTime(s64 time);
 
 #endif /* __PLUGINS_H__ */
 
