@@ -2003,15 +2003,15 @@ int cdrFreeze(gzFile f, int Mode) {
 }
 
 void LidInterrupt() {
-	SetCdOpenCaseTime(time(NULL) + 2);
+	//SetCdOpenCaseTime(time(NULL) + 2);
 
 	getCdInfo();
 	StopCdda();
 
     cdr.StatP |= STATUS_SHELLOPEN;
     isShellopen = true;
-    cdr.DriveState = DRIVESTATE_STANDBY;
+    cdr.DriveState = DRIVESTATE_RESCAN_CD;
 
-	//cdrLidSeekInterrupt();
-	set_event(PSXINT_CDRLID, cdReadTime * 30);
+	cdrLidSeekInterrupt();
+	//set_event(PSXINT_CDRLID, cdReadTime * 30);
 }

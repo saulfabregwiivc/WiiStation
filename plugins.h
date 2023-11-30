@@ -41,7 +41,7 @@ int  LoadPlugins();
 void ReleasePlugins();
 int  OpenPlugins();
 void ClosePlugins();
-
+int ReloadCdromPlugin();
 
 typedef unsigned long (CALLBACK* PSEgetLibType)(void);
 typedef unsigned long (CALLBACK* PSEgetLibVersion)(void);
@@ -333,6 +333,11 @@ int LoadPAD2plugin(char *PAD2dll);
 int LoadNETplugin(char *NETdll);
 
 void CALLBACK clearDynarec(void);
+
+void SetIsoFile(const char *filename);
+const char *GetIsoFile(void);
+bool UsingIso(void);
+void SetCdOpenCaseTime(s64 time);
 
 #endif /* __PLUGINS_H__ */
 

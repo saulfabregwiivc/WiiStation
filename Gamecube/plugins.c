@@ -25,10 +25,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-static signed long long cdOpenCaseTime = 0;
+//static signed long long cdOpenCaseTime = 0;
 
 #define EXT
 #include "../psxcommon.h"
+#include "../cdriso.h"
+#include "../plugins.h"
 #include "GamecubePlugins.h"
 #define CheckErr(func) \
     err = SysLibError(); \
@@ -37,6 +39,9 @@ static signed long long cdOpenCaseTime = 0;
 #define LoadSym(dest, src, name, checkerr) \
     dest = (src) SysLoadSym(drv, name); if (checkerr == 1) CheckErr(name); \
     if (checkerr == 2) { err = SysLibError(); if (err != NULL) errval = 1; }
+
+static char IsoFile[MAXPATHLEN] = "";
+static s64 cdOpenCaseTime = 0;
 
 GPUupdateLace         GPU_updateLace;
 GPUinit               GPU_init;
@@ -686,6 +691,39 @@ void ReleasePlugins() {
 	}
 }
 
-void SetCdOpenCaseTime(signed long long time) {
+// for CD swap
+int ReloadCdromPlugin()
+{
+	if (hCDRDriver != NULL || cdrIsoActive()) CDR_shutdown();
+	if (hCDRDriver != NULL) { SysCloseLibrary(hCDRDriver); hCDRDriver = NULL; }
+
+	if (UsingIso()) {
+		LoadCDRplugin(NULL);
+	} else {
+		char Plugin[MAXPATHLEN * 2];
+		sprintf(Plugin, "%s/%s", Config.PluginsDir, Config.Cdr);
+		if (LoadCDRplugin(Plugin) == -1) return -1;
+	}
+
+	return CDR_init();
+}
+
+void SetIsoFile(const char *filename) {
+	if (filename == NULL) {
+		IsoFile[0] = '\0';
+		return;
+	}
+	strncpy(IsoFile, filename, MAXPATHLEN - 1);
+}
+
+const char *GetIsoFile(void) {
+	return IsoFile;
+}
+
+bool UsingIso(void) {
+	return (IsoFile[0] != '\0');
+}
+
+void SetCdOpenCaseTime(s64 time) {
 	cdOpenCaseTime = time;
 }

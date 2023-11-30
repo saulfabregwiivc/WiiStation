@@ -42,6 +42,8 @@
 #include "libgui/IPLFont.h"
 #include "libgui/MessageBox.h"
 
+#include "../cdrom.h"
+
 extern char * GetGameBios(char * biosPath, char * fileName, int isoFileNameLen);
 extern char* filenameFromAbsPath(char* absPath);
 extern u32 __di_check_ahbprot(void);
@@ -690,31 +692,33 @@ void loadSeparatelySetting()
 // loadISO loads an ISO file as current media to read from.
 int loadISOSwap(fileBrowser_file* file) {
 
-  // Refresh file pointers
+    // Refresh file pointers
 	memset(&isoFile, 0, sizeof(fileBrowser_file));
 	memset(&cddaFile, 0, sizeof(fileBrowser_file));
 	memset(&subFile, 0, sizeof(fileBrowser_file));
-
 	memcpy(&isoFile, file, sizeof(fileBrowser_file) );
 
-    CdromId[0] = '\0';
-    CdromLabel[0] = '\0';
-    cdrIsoMultidiskSelect++;
+	SysPrintf("selected file: %s\n", &file->name[0]);
 
-    CDR_close();
-	//might need to insert code here to trigger a lid open/close interrupt
-	if(CDR_open() < 0)
-		return -1;
+	CdromId[0] = '\0';
+	CdromLabel[0] = '\0';
+	cdrIsoMultidiskSelect++;
 
-	CheckCdrom();
+	SetIsoFile(&file->name[0]);
 
 	loadSeparatelySetting();
 
+	if (ReloadCdromPlugin() < 0) {
+		return -1;
+	}
+	if (CDR_open() < 0) {
+		return -1;
+	}
+
+	SetCdOpenCaseTime(time(NULL) + 2);
 	swapIso = true;
-	LoadCdrom();
 
 	LidInterrupt();
-
 	return 0;
 }
 
@@ -733,6 +737,8 @@ int loadISO(fileBrowser_file* file)
 		SysClose();
 		hasLoadedISO = FALSE;
 	}
+	SetIsoFile(&file->name[0]);
+
 	needInitCpu = false;
 	if(SysInit() < 0)
 		return -1;
