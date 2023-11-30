@@ -180,7 +180,7 @@ typedef void (CALLBACK* SPUsetVolumeL)(unsigned char, short );
 typedef void (CALLBACK* SPUsetVolumeR)(unsigned char, short );
 //psemu pro 2 functions from now..
 typedef void (CALLBACK* SPUwriteRegister)(unsigned long, unsigned short, unsigned int);
-typedef unsigned short (CALLBACK* SPUreadRegister)(unsigned long);
+typedef unsigned short (CALLBACK* SPUreadRegister)(unsigned long, unsigned int);
 typedef void (CALLBACK* SPUwriteDMA)(unsigned short);
 typedef unsigned short (CALLBACK* SPUreadDMA)(void);
 typedef void (CALLBACK* SPUwriteDMAMem)(unsigned short *, int, unsigned int);
@@ -193,7 +193,7 @@ typedef void (CALLBACK* SPUregisterCDDAVolume)(void (*CDDAVcallback)(unsigned sh
 typedef long (CALLBACK* SPUconfigure)(void);
 typedef long (CALLBACK* SPUtest)(void);
 typedef void (CALLBACK* SPUabout)(void);
-typedef struct
+typedef struct SPUFreeze
 {
  char          szSPUName[8];
  uint32_t ulFreezeVersion;
@@ -202,8 +202,9 @@ typedef struct
  unsigned char cSPURam[0x80000];
  xa_decode_t   xaS;
 } SPUFreeze_t;
-typedef long (CALLBACK* SPUfreeze)(uint32_t, SPUFreeze_t *, uint32_t);
-typedef void (CALLBACK* SPUasync)(uint32_t, uint32_t, uint32_t);
+typedef long (CALLBACK* SPUfreeze)(unsigned int, struct SPUFreeze *, unsigned int);
+typedef void (CALLBACK* SPUasync)(unsigned int, unsigned int, unsigned int);
+typedef void (CALLBACK* SPUsetCDvol)(unsigned char, unsigned char, unsigned char, unsigned char, unsigned int);
 
 // SPU function pointers
 extern SPUconfigure        SPU_configure;
@@ -226,6 +227,7 @@ extern SPUregisterCallback SPU_registerCallback;
 extern SPUregisterScheduleCb SPU_registerScheduleCb;
 extern SPUasync            SPU_async;
 extern SPUplayCDDAchannel  SPU_playCDDAchannel;
+extern SPUsetCDvol         SPU_setCDvol;
 
 // PAD Functions
 typedef long (CALLBACK* PADconfigure)(void);

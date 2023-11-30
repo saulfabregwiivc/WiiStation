@@ -18,13 +18,29 @@
 #ifndef __P_SPU_H__
 #define __P_SPU_H__
 
-#define HTOLE16(x) __builtin_bswap16(x)
-#define LE16TOH(x) __builtin_bswap16(x)
+struct SPUFreeze;
+struct xa_decode;
 
-void ClearWorkingState(void);
-void CALLBACK DF_SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int is_start);
+long CALLBACK DF_SPUopen(void);
+long CALLBACK DF_SPUinit(void);
+long CALLBACK DF_SPUshutdown(void);
+long CALLBACK DF_SPUclose(void);
+void CALLBACK DF_SPUwriteRegister(unsigned long, unsigned short, unsigned int);
+unsigned short CALLBACK DF_SPUreadRegister(unsigned long, unsigned int);
+void CALLBACK DF_SPUregisterCallback(void (*cb)(int));
+void CALLBACK DF_SPUregisterScheduleCb(void (*cb)(unsigned int));
+long CALLBACK DF_SPUfreeze(unsigned int, struct SPUFreeze *, unsigned int);
+void CALLBACK DF_SPUasync(unsigned int cycle, unsigned int flags, unsigned int psxType);
+
+void CALLBACK DF_SPUreadDMAMem(unsigned short * pusPSXMem,int iSize,unsigned int cycles);
+void CALLBACK DF_SPUwriteDMAMem(unsigned short * pusPSXMem,int iSize,unsigned int cycles);
+
+void CALLBACK DF_SPUplayADPCMchannel(struct xa_decode *xap, unsigned int cycle, int is_start);
 int  CALLBACK DF_SPUplayCDDAchannel(short *pcm, int bytes, unsigned int cycle, int is_start);
-void FeedXA(const xa_decode_t *xap);
-void FeedCDDA(unsigned char *pcm, int nBytes);
+void CALLBACK DF_SPUsetCDvol(unsigned char ll, unsigned char lr,
+		unsigned char rl, unsigned char rr, unsigned int cycle);
+
+// internal
+void ClearWorkingState(void);
 
 #endif /* __P_SPU_H__ */

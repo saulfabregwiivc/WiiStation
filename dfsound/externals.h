@@ -91,17 +91,6 @@ typedef struct
 
 ///////////////////////////////////////////////////////////
 
-// Tmp Flags
-
-// used for debug channel muting
-#define FLAG_MUTE  1
-
-// used for simple interpolation
-#define FLAG_IPOL0 2
-#define FLAG_IPOL1 4
-
-///////////////////////////////////////////////////////////
-
 // MAIN CHANNEL STRUCT
 typedef struct
 {
@@ -119,6 +108,7 @@ typedef struct
  unsigned int      bFMod:2;                            // freq mod (0=off, 1=sound channel, 2=freq channel)
  unsigned int      prevflags:3;                        // flags from previous block
  unsigned int      bIgnoreLoop:1;                      // Ignore loop
+ unsigned int      bStarting:1;                        // starting after keyon
  unsigned int      bNewPitch:1;                        // pitch changed
  union {
   struct {
@@ -282,5 +272,10 @@ void do_irq_io(int cycles_after);
 //  if (sync || (int)((c) - spu.cycles_played) >= (samples) * 768) \
 //   do_samples(c, sync); \
 // } while (0)
+//
+//#endif
+
+void FeedXA(const xa_decode_t *xap);
+void FeedCDDA(unsigned char *pcm, int nBytes);
 
 #endif /* __P_SOUND_EXTERNALS_H__ */

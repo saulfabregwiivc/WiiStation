@@ -34,9 +34,10 @@ static signed long long cdOpenCaseTime = 0;
     err = SysLibError(); \
     if (err != NULL) { SysPrintf("Error loading %s: %s\n", func, err); return -1; }
 
-#define LoadSym(dest, src, name, checkerr) \
-    dest = (src) SysLoadSym(drv, name); if (checkerr == 1) CheckErr(name); \
-    if (checkerr == 2) { err = SysLibError(); if (err != NULL) errval = 1; }
+#define LoadSym(dest, src, name, checkerr) { \
+	dest = (src)SysLoadSym(drv, name); \
+	if (checkerr) { CheckErr(name); } \
+}
 
 GPUupdateLace         GPU_updateLace;
 GPUinit               GPU_init;
@@ -102,6 +103,7 @@ SPUregisterCallback   SPU_registerCallback;
 SPUregisterScheduleCb SPU_registerScheduleCb;
 SPUasync              SPU_async;
 SPUplayCDDAchannel    SPU_playCDDAchannel;
+SPUsetCDvol           SPU_setCDvol;
 
 PADconfigure          PAD1_configure;
 PADabout              PAD1_about;
@@ -331,6 +333,8 @@ void *hSPUDriver;
 long CALLBACK SPU__configure(void) { return 0; }
 void CALLBACK SPU__about(void) {}
 long CALLBACK SPU__test(void) { return 0; }
+static void CALLBACK SPU__setCDvol(unsigned char ll, unsigned char lr,
+		unsigned char rl, unsigned char rr, unsigned int cycle) {}
 
 #define LoadSpuSym1(dest, name) \
 	LoadSym(SPU_##dest, SPU##dest, name, 1);
@@ -340,7 +344,7 @@ long CALLBACK SPU__test(void) { return 0; }
 
 #define LoadSpuSym0(dest, name) \
 	LoadSym(SPU_##dest, SPU##dest, name, 0); \
-	if (SPU_##dest == NULL) SPU_##dest = (SPU##dest) SPU__##dest;
+	if (SPU_##dest == NULL) SPU_##dest = SPU__##dest;
 
 #define LoadSpuSymE(dest, name) \
 	LoadSym(SPU_##dest, SPU##dest, name, errval); \
@@ -379,6 +383,7 @@ int LoadSPUplugin(char *SPUdll) {
 	LoadSpuSym1(registerScheduleCb, "SPUregisterScheduleCb");
 	//LoadSpuSym1(registerCDDAVolume, "SPUregisterCDDAVolume");
 	LoadSpuSymN(playCDDAchannel, "SPUplayCDDAchannel");
+	LoadSpuSym0(setCDvol, "SPUsetCDvol");
 
 	return 0;
 }

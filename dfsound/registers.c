@@ -317,7 +317,7 @@ rvbd:
 // READ REGISTER: called by main emu
 ////////////////////////////////////////////////////////////////////////
 
-unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
+unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg, unsigned int cycles)
 {
  const unsigned long r = reg & 0xffe;
         
@@ -327,14 +327,13 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
     {
      case 12:                                          // get adsr vol
       {
-       const int ch=(r>>4)-0xc0;
-       if(spu.dwNewChannel&(1<<ch)) return 1;          // we are started, but not processed? return 1
-       if((spu.dwChannelsAudible&(1<<ch)) &&                 // same here... we haven't decoded one sample yet, so no envelope yet. return 1 as well
-          //!spu.s_chan[ch].ADSRX.EnvelopeVol)
-          spu.s_chan[ch].ADSRX.EnvelopeVol <= 0)
-        return 1;
-       //return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol>>16);
-       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol);
+       // this used to return 1 immediately after keyon to deal with
+       // some poor timing, but that causes Rayman 2 to lose track of
+       // it's channels on busy scenes and start looping some of them forever
+       const int ch = (r>>4) - 0xc0;
+       if (spu.s_chan[ch].bStarting)
+        do_samples_if_needed(cycles, 0, 2);
+       return (unsigned short)(spu.s_chan[ch].ADSRX.EnvelopeVol >> 16);
       }
 
      case 14:                                          // get loop address
@@ -358,7 +357,7 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
      return spu.spuCtrl;
 
     case H_SPUstat:
-     return (spu.spuStat & ~0x3F) | (spu.spuCtrl & 0x3F);
+     return spu.spuStat;
         
     case H_SPUaddr:
      return (unsigned short)(spu.spuAddr>>3);
@@ -378,7 +377,24 @@ unsigned short CALLBACK DF_SPUreadRegister(unsigned long reg)
 
     //case H_SPUIsOn2:
     // return IsSoundOn(16,24);
+ 
+    case H_SPUMute1:
+    case H_SPUMute2:
+     //log_unhandled("r isOn: %08lx\n", reg);
+     break;
 
+    case 0x0dac:
+    case H_SPUirqAddr:
+    case H_CDLeft:
+    case H_CDRight:
+    case H_ExtLeft:
+    case H_ExtRight:
+     break;
+
+    default:
+     if (r >= 0xda0)
+       //log_unhandled("spu r %08lx\n", reg);
+     break;
   }
 
  return spu.regArea[(r-0xc00)>>1];

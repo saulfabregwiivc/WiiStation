@@ -108,7 +108,7 @@ typedef struct
  ADSRInfoEx_orig   ADSRX;                              // next ADSR settings (will be moved to active on sample start)
 } SPUCHAN_orig;
 
-typedef struct
+typedef struct SPUFreeze
 {
  char          szSPUName[8];
  uint32_t ulFreezeVersion;
@@ -238,8 +238,8 @@ static void load_register(unsigned long reg, unsigned int cycles)
 // SPUFREEZE: called by main emu on savestate load/save
 ////////////////////////////////////////////////////////////////////////
 
-long CALLBACK DF_SPUfreeze(unsigned long ulFreezeMode, SPUFreeze_t * pF,
- uint32_t cycles)
+long CALLBACK DF_SPUfreeze(unsigned int ulFreezeMode, SPUFreeze_t * pF,
+ unsigned int cycles)
 {
  SPUOSSFreeze_t * pFO = NULL;
  int i;

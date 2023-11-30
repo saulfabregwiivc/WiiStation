@@ -136,106 +136,158 @@ INLINE void StartADSR(int ch)                          // MIX ADSR
         } \
     }
 
-static int MixADSR(ADSRInfoEx *adsr, int ns_to)
+static int MixADSR(int *samples, ADSRInfoEx *adsr, int ns_to)
 {
-    int EnvelopeVol = adsr->EnvelopeVol;
-    int EnvelopeCounter = adsr->EnvelopeCounter;
-    int val, level, counter;
-    int ns = 0, rto;
+ unsigned int EnvelopeVol = adsr->EnvelopeVol;
+ int ns = 0, val, rto, level;
 
-    if (adsr->State == ADSR_RELEASE)
-    {
-        DoReduceCommon(adsr->ReleaseRate * 4, adsr->ReleaseModeExp);
+ if (adsr->State == ADSR_RELEASE)
+ {
+   val = RateTableSub[adsr->ReleaseRate * 4];
 
-        goto done;
-    }
+   if (adsr->ReleaseModeExp)
+   {
+     for (; ns < ns_to; ns++)
+     {
+       EnvelopeVol += ((long long)val * EnvelopeVol) >> (15+16);
+       if ((signed int)EnvelopeVol <= 0)
+         break;
 
-    switch (adsr->State)
-    {
-    case ADSR_ATTACK:                                   // -> attack
-        ResetIncCounterVal(adsr->AttackRate, adsr->AttackModeExp);
+       samples[ns] *= (signed int)EnvelopeVol >> 21;
+       samples[ns] >>= 10;
+     }
+   }
+   else
+   {
+     for (; ns < ns_to; ns++)
+     {
+       EnvelopeVol += val;
+       if ((signed int)EnvelopeVol <= 0)
+         break;
 
-        for (; ns < ns_to; ns++)
-        {
-            CheckValStep();
-            if (EnvelopeVol > 32767) // overflow
-            {
-                EnvelopeVol = 32767;
-                EnvelopeCounter = 0;
-                adsr->State = ADSR_DECAY;
-                ns++; // sample is good already
-                goto decay;
-            }
+       samples[ns] *= (signed int)EnvelopeVol >> 21;
+       samples[ns] >>= 10;
+     }
+   }
 
-            SetVal();
-        }
+   goto done;
+ }
 
+ switch (adsr->State)
+ {
+   case ADSR_ATTACK:                                   // -> attack
+     rto = 0;
+     if (adsr->AttackModeExp && EnvelopeVol >= 0x60000000)
+       rto = 8;
+     val = RateTableAdd[adsr->AttackRate + rto];
+
+     for (; ns < ns_to; ns++)
+     {
+       EnvelopeVol += val;
+       if ((signed int)EnvelopeVol < 0) // overflow
         break;
 
-        //--------------------------------------------------//
-decay:
-    case ADSR_DECAY:                                    // -> decay
-        val = RateTableSub[adsr->DecayRate * 4];
-        counter = EnvelopeTicks[adsr->DecayRate * 4];
-        level = (adsr->SustainLevel);
+       samples[ns] *= (signed int)EnvelopeVol >> 21;
+       samples[ns] >>= 10;
+     }
 
-        for (; ns < ns_to; )
-        {
-            CheckValStepExp();
-            SetValDec();
+     if ((signed int)EnvelopeVol < 0) // overflow
+     {
+       EnvelopeVol = 0x7fffffff;
+       adsr->State = ADSR_DECAY;
+       ns++; // sample is good already
+       goto decay;
+     }
+     break;
 
-            ns++;
+   //--------------------------------------------------//
+   decay:
+   case ADSR_DECAY:                                    // -> decay
+     val = RateTableSub[adsr->DecayRate * 4];
+     level = adsr->SustainLevel;
 
-            if (EnvelopeVol < level)
-            //if (((short)(EnvelopeVol >> 11) & 0xf) <= level)
-            {
-                adsr->State = ADSR_SUSTAIN;
-                goto sustain;
-            }
-        }
-        break;
+     for (; ns < ns_to; )
+     {
+       EnvelopeVol += ((long long)val * EnvelopeVol) >> (15+16);
+       if ((signed int)EnvelopeVol < 0)
+         EnvelopeVol = 0;
 
-        //--------------------------------------------------//
-sustain:
-    case ADSR_SUSTAIN:                                  // -> sustain
-		EnvelopeCounter = EnvelopeTicks[adsr->SustainRate];
-	
-        if (adsr->SustainIncrease)
-        {
-            if (EnvelopeVol >= 32767)
-            {
-                ns = ns_to;
-                break;
-            }
+       samples[ns] *= EnvelopeVol >> 21;
+       samples[ns] >>= 10;
+       ns++;
 
-            ResetIncCounterVal(adsr->SustainRate, adsr->SustainModeExp);
+       if (((EnvelopeVol >> 27) & 0xf) <= level)
+       {
+         adsr->State = ADSR_SUSTAIN;
+         goto sustain;
+       }
+     }
+     break;
 
-            for (; ns < ns_to; ns++)
-            {
-                CheckValStep();
+   //--------------------------------------------------//
+   sustain:
+   case ADSR_SUSTAIN:                                  // -> sustain
+     if (adsr->SustainIncrease)
+     {
+       if (EnvelopeVol >= 0x7fff0000)
+       {
+         ns = ns_to;
+         break;
+       }
 
-                if (EnvelopeVol >= 32767)
-                {
-                    EnvelopeVol = 32767;
-                    EnvelopeCounter = 0;
-                    ns = ns_to;
-                    break;
-                }
+       rto = 0;
+       if (adsr->SustainModeExp && EnvelopeVol >= 0x60000000)
+         rto = 8;
+       val = RateTableAdd[adsr->SustainRate + rto];
 
-                SetVal();
-            }
-        }
-        else
-        {
-            DoReduceCommon(adsr->SustainRate, adsr->SustainModeExp);
-        }
-        break;
-    }
+       for (; ns < ns_to; ns++)
+       {
+         EnvelopeVol += val;
+         if (EnvelopeVol >= 0x7fe00000)
+         {
+           EnvelopeVol = 0x7fffffff;
+           ns = ns_to;
+           break;
+         }
+
+         samples[ns] *= (signed int)EnvelopeVol >> 21;
+         samples[ns] >>= 10;
+       }
+     }
+     else
+     {
+       val = RateTableSub[adsr->SustainRate];
+       if (adsr->SustainModeExp)
+       {
+         for (; ns < ns_to; ns++)
+         {
+           EnvelopeVol += ((long long)val * EnvelopeVol) >> (15+16);
+           if ((signed int)EnvelopeVol < 0)
+             break;
+
+           samples[ns] *= (signed int)EnvelopeVol >> 21;
+           samples[ns] >>= 10;
+         }
+       }
+       else
+       {
+         for (; ns < ns_to; ns++)
+         {
+           EnvelopeVol += val;
+           if ((signed int)EnvelopeVol < 0)
+             break;
+
+           samples[ns] *= (signed int)EnvelopeVol >> 21;
+           samples[ns] >>= 10;
+         }
+       }
+     }
+     break;
+ }
 
 done:
-    adsr->EnvelopeVol = EnvelopeVol;
-    adsr->EnvelopeCounter = EnvelopeCounter;
-    return ns;
+ adsr->EnvelopeVol = EnvelopeVol;
+ return ns;
 }
 
 

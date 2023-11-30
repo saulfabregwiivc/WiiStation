@@ -119,7 +119,7 @@ unsigned short DF_SPUreadDMA(void);
 void DF_SPUreadDMAMem(unsigned short * pusPSXMem,int iSize, unsigned int cycles);
 void DF_SPUwriteDMA(unsigned short val);
 void DF_SPUwriteDMAMem(unsigned short * pusPSXMem,int iSize, unsigned int cycles);
-void DF_SPUasync(unsigned long cycle, unsigned int flags, unsigned int psxType);
+void DF_SPUasync(unsigned int cycle, unsigned int flags, unsigned int psxType);
 void DF_SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int is_start);
 int  DF_SPUplayCDDAchannel(short *pcm, int nbytes, unsigned int cycle, int is_start);
 long DF_SPUinit(void);
@@ -134,6 +134,8 @@ long DF_SPUupdate(void);
 void DF_SPUregisterCallback(void (*callback)(int));
 void DF_SPUregisterCDDAVolume(void (*CDDAVcallback)(unsigned short,unsigned short));
 void DF_SPUregisterScheduleCb(void (*callback)(unsigned int));
+void DF_SPUsetCDvol(unsigned char ll, unsigned char lr, unsigned char rl, unsigned char rr, unsigned int cycle);
+
 
 /* CDR */
 long CDR__open(void);
@@ -513,7 +515,7 @@ unsigned char * CALLBACK Mooby2CDRgetBuffer(void);
 
 #define DFSOUND_PLUGIN \
 	{ "SPU",      \
-	  18,         \
+	  19,         \
 	  { { "SPUinit",  \
 	      (void*)DF_SPUinit}, \
 	    { "SPUshutdown", \
@@ -548,6 +550,8 @@ unsigned char * CALLBACK Mooby2CDRgetBuffer(void);
 	      (void*)DF_SPUregisterCDDAVolume}, \
         { "SPUregisterScheduleCb", \
 	      (void*)DF_SPUregisterScheduleCb}, \
+        { "SPUsetCDvol", \
+	      (void*)DF_SPUsetCDvol}, \
 	    { "SPUasync", \
 	      (void*)DF_SPUasync} \
 	       } }

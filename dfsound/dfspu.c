@@ -26,6 +26,7 @@
 #include "registers.h"
 #include "out.h"
 #include "spu_config.h"
+#include "spu.h"
 #include "../coredebug.h"
 #include "../psxcommon.h"
 
@@ -264,6 +265,7 @@ static void StartSoundMain(int ch)
  s_chan->prevflags=2;
  s_chan->iSBPos=27;
  s_chan->spos=0;
+ s_chan->bStarting=1;
 
  s_chan->pCurr = spu.spuMemC + ((regAreaGetCh(ch, 6) & ~1) << 3);
 
@@ -464,6 +466,7 @@ static int decode_block(void *unused, int ch, int *SB)
 
  s_chan->pCurr = start;                    // store values for next cycle
  s_chan->prevflags = flags;
+ s_chan->bStarting = 0;
 
  return ret;
 }
@@ -493,6 +496,7 @@ static int skip_block(int ch)
 
  s_chan->pCurr = start;
  s_chan->prevflags = flags;
+ s_chan->bStarting = 0;
 
  return ret;
 }
@@ -810,13 +814,14 @@ static void do_channels(int ns_to)
     d = do_samples_default(decode_block, NULL, ch, ns_to,
           SB, sinc, &s_chan->spos, &s_chan->iSBPos);
 
-   d = MixADSR(&s_chan->ADSRX, d);
-   if (d < ns_to) {
-    spu.dwChannelsAudible &= ~(1 << ch);
-    s_chan->ADSRX.State = ADSR_RELEASE;
-    s_chan->ADSRX.EnvelopeVol = 0;
-    s_chan->ADSRX.EnvelopeCounter = 0;
-    memset(&ChanBuf[d], 0, (ns_to - d) * sizeof(ChanBuf[0]));
+   if (!s_chan->bStarting) {
+    d = MixADSR(ChanBuf, &s_chan->ADSRX, d);
+    if (d < ns_to) {
+     spu.dwChannelsAudible &= ~(1 << ch);
+     s_chan->ADSRX.State = ADSR_RELEASE;
+     s_chan->ADSRX.EnvelopeVol = 0;
+     memset(&ChanBuf[d], 0, (ns_to - d) * sizeof(ChanBuf[0]));
+    }
    }
 
    if (ch == 1 || ch == 3)
@@ -835,7 +840,7 @@ static void do_channels(int ns_to)
     mix_chan(spu.SSumLR, ns_to, s_chan->iLeftVolume, s_chan->iRightVolume);
   }
 
-  MixXA(spu.SSumLR, RVB, ns_to, spu.decode_pos);
+  MixCD(spu.SSumLR, RVB, ns_to, spu.decode_pos);
 
   if (spu.rvb->StartAddr) {
    if (do_rvb)
@@ -1071,11 +1076,13 @@ void DF_SPUupdate(void)
 
 // XA AUDIO
 
-void DF_SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int unused)
+void DF_SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int is_start)
 {
  if(!xap)       return;
  if(!xap->freq) return;                // no xa freq ? bye
 
+ if (is_start)
+  spu.XAPlay = spu.XAFeed = spu.XAStart;
  if (spu.XAPlay == spu.XAFeed)
   do_samples(cycle, 1);                // catch up to prevent source underflows later
 
@@ -1094,6 +1101,17 @@ int DF_SPUplayCDDAchannel(short *pcm, int nbytes, unsigned int cycle, int unused
 
  FeedCDDA((unsigned char *)pcm, nbytes);
  return 0;
+}
+
+void CALLBACK DF_SPUsetCDvol(unsigned char ll, unsigned char lr,
+  unsigned char rl, unsigned char rr, unsigned int cycle)
+{
+ if (spu.XAPlay != spu.XAFeed || spu.CDDAPlay != spu.CDDAFeed)
+  do_samples(cycle, 1);
+ spu.cdv.ll = ll;
+ spu.cdv.lr = lr;
+ spu.cdv.rl = rl;
+ spu.cdv.rr = rr;
 }
 
 // to be called after state load
