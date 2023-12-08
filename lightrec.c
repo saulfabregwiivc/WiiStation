@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 
 #include "cdrom.h"
+#include "gpu.h"
 #include "gte.h"
 #include "mdec.h"
 #include "psxdma.h"
@@ -20,6 +21,18 @@
 #include "deps/lightrec/lightrec.h"
 
 #define ARRAY_SIZE(x) (sizeof(x) ? sizeof(x) / sizeof((x)[0]) : 0)
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#	define LE32TOH(x)	__builtin_bswap32(x)
+#	define HTOLE32(x)	__builtin_bswap32(x)
+#	define LE16TOH(x)	__builtin_bswap16(x)
+#	define HTOLE16(x)	__builtin_bswap16(x)
+#else
+#	define LE32TOH(x)	(x)
+#	define HTOLE32(x)	(x)
+#	define LE16TOH(x)	(x)
+#	define HTOLE16(x)	(x)
+#endif
 
 #ifdef __GNUC__
 #	define likely(x)       __builtin_expect(!!(x),1)
