@@ -1,24 +1,35 @@
+#include <lightrec.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
 #include <assert.h>
-#include <sys/stat.h>
 
-#include "cdrom.h"
-#include "gpu.h"
-#include "gte.h"
-#include "mdec.h"
-#include "psxdma.h"
-#include "psxhw.h"
-#include "psxmem.h"
-#include "r3000a.h"
-#include "psxinterpreter.h"
-#include "psxhle.h"
-#include "Gamecube/MEM2.h"
-#include "Gamecube/PadSSSPSX.h"
-#include "deps/lightrec/lightrec.h"
+#if P_HAVE_MMAP
+#include <sys/mman.h>
+#endif
+
+#include "../cdrom.h"
+#include "../gpu.h"
+#include "../gte.h"
+#include "../mdec.h"
+#include "../psxdma.h"
+#include "../psxhw.h"
+#include "../psxmem.h"
+#include "../r3000a.h"
+#include "../psxinterpreter.h"
+#include "../psxhle.h"
+#include "../psxevents.h"
+
+#include "../frontend/main.h"
+
+#include "mem.h"
+#include "plugin.h"
+
+#if (defined(__arm__) || defined(__aarch64__)) && !defined(ALLOW_LIGHTREC_ON_ARM)
+#error "Lightrec should not be used on ARM (please specify DYNAREC=ari64 to make)"
+#endif
 
 #define ARRAY_SIZE(x) (sizeof(x) ? sizeof(x) / sizeof((x)[0]) : 0)
 
@@ -42,22 +53,20 @@
 #	define unlikely(x)     (x)
 #endif
 
-#define BUF_SIZE 0x400000 // 4 MiB code buffer for Lightrec and DYNAREC
-char recBuffer[BUF_SIZE] __attribute__((aligned(32)));
+psxRegisters psxRegs;
+Rcnt rcnts[4];
 
-//static s8 code_buffer [0x400000] __attribute__((aligned(32)));
-static s8* code_buffer = (s8*)recBuffer;
+void* code_buffer;
+
 static struct lightrec_state *lightrec_state;
 
-static char *name = "sd:/WiiStation/WiiStation.elf";
+static char *name = "retroarch.exe";
 
-/* Unused for now */
-u32 event_cycles[PSXINT_COUNT];
-u32 next_interupt;
-
-static bool use_lightrec_interpreter = false;
-static bool use_pcsx_interpreter = false;
+static bool use_lightrec_interpreter;
+static bool use_pcsx_interpreter;
 static bool block_stepping;
+
+extern u32 lightrec_hacks;
 
 enum my_cp2_opcodes {
 	OP_CP2_RTPS		= 0x01,
@@ -85,6 +94,7 @@ enum my_cp2_opcodes {
 };
 
 static void (*cp2_ops[])(struct psxCP2Regs *) = {
+	[OP_CP2_RTPS] = gteRTPS,
 	[OP_CP2_RTPS] = gteRTPS,
 	[OP_CP2_NCLIP] = gteNCLIP,
 	[OP_CP2_OP] = gteOP,
@@ -118,9 +128,7 @@ static void cop2_op(struct lightrec_state *state, u32 func)
 	psxRegs.code = func;
 
 	if (unlikely(!cp2_ops[func & 0x3f])) {
-		#ifdef SHOW_DEBUG
 		fprintf(stderr, "Invalid CP2 function %u\n", func);
-		#endif // SHOW_DEBUG
 	} else {
 		/* This works because regs->cp2c comes right after regs->cp2d,
 		 * so it can be cast to a pcsxCP2Regs pointer. */
@@ -303,8 +311,17 @@ static struct lightrec_mem_map lightrec_map[] = {
 		.length = 0x200000,
 		.mirror_of = &lightrec_map[PSX_MAP_KERNEL_USER_RAM],
 	},
+
+	/* Mirror of the parallel port. Only used by the PS2/PS3 BIOS */
+	[PSX_MAP_PPORT_MIRROR] = {
+		.pc = 0x1fa00000,
+		.length = 0x10000,
+		.mirror_of = &lightrec_map[PSX_MAP_PARALLEL_PORT],
+	},
+
+	/* Code buffer */
 	[PSX_MAP_CODE_BUFFER] = {
-		.length = BUF_SIZE, //sizeof(code_buffer),
+		.length = CODE_BUFFER_SIZE,
 	},
 };
 
@@ -392,134 +409,81 @@ static bool lightrec_can_hw_direct(u32 kaddr, bool is_write, u8 size)
 	}
 }
 
-extern void DCFlushRange(void *ptr, u32 len);
-extern void ICInvalidateRange(void *ptr, u32 len);
-
+#if defined(HW_DOL) || defined(HW_RVL)
 static void lightrec_code_inv(void *ptr, uint32_t len)
 {
+	extern void DCFlushRange(void *ptr, u32 len);
+	extern void ICInvalidateRange(void *ptr, u32 len);
+
 	DCFlushRange(ptr, len);
 	ICInvalidateRange(ptr, len);
 }
+#elif defined(HW_WUP)
+static void lightrec_code_inv(void *ptr, uint32_t len)
+{
+	wiiu_clear_cache(ptr, (void *)((uintptr_t)ptr + len));
+}
+#endif
 
 static const struct lightrec_ops lightrec_ops = {
 	.cop2_op = cop2_op,
 	.enable_ram = lightrec_enable_ram,
 	.hw_direct = lightrec_can_hw_direct,
+#if defined(HW_DOL) || defined(HW_RVL) || defined(HW_WUP)
 	.code_inv = lightrec_code_inv,
+#endif
 };
 
 static int lightrec_plugin_init(void)
 {
-#if 0
 	lightrec_map[PSX_MAP_KERNEL_USER_RAM].address = psxM;
 	lightrec_map[PSX_MAP_BIOS].address = psxR;
 	lightrec_map[PSX_MAP_SCRATCH_PAD].address = psxH;
-	lightrec_map[PSX_MAP_PARALLEL_PORT].address = psxP;
 	lightrec_map[PSX_MAP_HW_REGISTERS].address = psxH + 0x1000;
-	lightrec_map[PSX_MAP_CODE_BUFFER].address = code_buffer;
-	/*
-	lightrec_map[PSX_MAP_MIRROR1].address = psxM + 0x200000;
-	lightrec_map[PSX_MAP_MIRROR2].address = psxM + 0x400000;
-	lightrec_map[PSX_MAP_MIRROR3].address = psxM + 0x600000;
-	*/
-#else
-	lightrec_map[PSX_MAP_KERNEL_USER_RAM].address = (void *)0x0;
-	lightrec_map[PSX_MAP_MIRROR1].address = (void *)0x200000;
-	lightrec_map[PSX_MAP_MIRROR2].address = (void *)0x400000;
-	lightrec_map[PSX_MAP_MIRROR3].address = (void *)0x600000;
+	lightrec_map[PSX_MAP_PARALLEL_PORT].address = psxP;
 
-	lightrec_map[PSX_MAP_BIOS].address = (void *)0x1fc00000;
-	lightrec_map[PSX_MAP_SCRATCH_PAD].address = (void *)0x1f800000;
-	lightrec_map[PSX_MAP_HW_REGISTERS].address = (void *)0x1f801000;
-	lightrec_map[PSX_MAP_CODE_BUFFER].address = code_buffer; // RECMEM2_LO;
+	if (!LIGHTREC_CUSTOM_MAP) {
+#if P_HAVE_MMAP
+		code_buffer = mmap(0, CODE_BUFFER_SIZE,
+				   PROT_EXEC | PROT_READ | PROT_WRITE,
+				   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (code_buffer == MAP_FAILED)
+			return -ENOMEM;
+#else
+		code_buffer = malloc(CODE_BUFFER_SIZE);
+		if (!code_buffer)
+			return -ENOMEM;
 #endif
+	}
+
+	if (LIGHTREC_CUSTOM_MAP) {
+		lightrec_map[PSX_MAP_MIRROR1].address = psxM + 0x200000;
+		lightrec_map[PSX_MAP_MIRROR2].address = psxM + 0x400000;
+		lightrec_map[PSX_MAP_MIRROR3].address = psxM + 0x600000;
+	}
+
+	lightrec_map[PSX_MAP_CODE_BUFFER].address = code_buffer;
+
+	use_lightrec_interpreter = !!getenv("LIGHTREC_INTERPRETER");
 
 	lightrec_state = lightrec_init(name,
 			lightrec_map, ARRAY_SIZE(lightrec_map),
 			&lightrec_ops);
 
-	lightrec_set_unsafe_opt_flags(lightrec_state, Config.hacks.lightrec_hacks);
+	// fprintf(stderr, "M=0x%lx, P=0x%lx, R=0x%lx, H=0x%lx\n",
+	// 		(uintptr_t) psxM,
+	// 		(uintptr_t) psxP,
+	// 		(uintptr_t) psxR,
+	// 		(uintptr_t) psxH);
 
+#ifndef _WIN32
 	signal(SIGPIPE, exit);
-
+#endif
 	return 0;
 }
 
 static void lightrec_plugin_sync_regs_to_pcsx(bool need_cp2);
 static void lightrec_plugin_sync_regs_from_pcsx(bool need_cp2);
-
-static void schedule_timeslice(void)
-{
-	u32 i, c = psxRegs.cycle;
-	u32 irqs = psxRegs.interrupt;
-	s32 min, dif;
-
-	min = PSXCLK;
-	for (i = 0; irqs != 0; i++, irqs >>= 1) {
-		if (!(irqs & 1))
-			continue;
-		dif = event_cycles[i] - c;
-		if (0 < dif && dif < min)
-			min = dif;
-	}
-	next_interupt = c + min;
-}
-
-static void irqNoOp() {
-}
-
-typedef void (irq_func)();
-
-static irq_func * const irq_funcs[] = {
-	[PSXINT_SIO]	= sioInterrupt,
-	[PSXINT_CDR]	= cdrInterrupt,
-	[PSXINT_CDREAD]	= cdrPlayReadInterrupt,
-	[PSXINT_GPUDMA]	= gpuInterrupt,
-	[PSXINT_MDECOUTDMA] = mdec1Interrupt,
-	[PSXINT_SPUDMA]	= spuInterrupt,
-	[PSXINT_MDECINDMA] = mdec0Interrupt,
-	[PSXINT_GPUOTCDMA] = gpuotcInterrupt,
-	[PSXINT_CDRDMA] = cdrDmaInterrupt,
-	[PSXINT_NEWDRC_CHECK] = irqNoOp,
-	[PSXINT_CDRLID] = cdrLidSeekInterrupt,
-	[PSXINT_SPU_UPDATE] = spuUpdate,
-	[PSXINT_SPU_IRQ] = spuDelayedIrq,
-	[PSXINT_RCNT] = psxRcntUpdate,
-	[PSXINT_LIGHTGUN] = lightgunInterrupt,
-};
-
-/* local dupe of psxBranchTest, using event_cycles */
-void irq_test(psxCP0Regs *cp0)
-{
-	u32 cycle = psxRegs.cycle;
-	u32 irq, irq_bits;
-
-	for (irq = 0, irq_bits = psxRegs.interrupt; irq_bits != 0; irq++, irq_bits >>= 1) {
-		if (!(irq_bits & 1))
-			continue;
-		if ((s32)(cycle - event_cycles[irq]) >= 0) {
-			// note: irq_funcs() also modify psxRegs.interrupt
-			psxRegs.interrupt &= ~(1u << irq);
-			irq_funcs[irq]();
-		}
-	}
-
-	cp0->n.Cause &= ~0x400;
-	if (psxHu32(0x1070) & psxHu32(0x1074))
-		cp0->n.Cause |= 0x400;
-	if (((cp0->n.Cause | 1) & cp0->n.SR & 0x401) == 0x401) {
-		psxException(0, 0, cp0);
-		//pending_exception = 1;
-	}
-}
-
-void gen_interupt(psxCP0Regs *cp0)
-{
-	//printf("%08x, %u->%u (%d)\r\n", psxRegs.pc, psxRegs.cycle,
-	//	next_interupt, next_interupt - psxRegs.cycle);
-	irq_test(cp0);
-	schedule_timeslice();
-}
 
 static void lightrec_plugin_execute_internal(bool block_only)
 {
@@ -528,6 +492,9 @@ static void lightrec_plugin_execute_internal(bool block_only)
 
 	regs = lightrec_get_registers(lightrec_state);
 	gen_interupt((psxCP0Regs *)regs->cp0);
+	if (!block_only && stop)
+		return;
+
 	cycles_pcsx = next_interupt - psxRegs.cycle;
 	assert((s32)cycles_pcsx > 0);
 
@@ -536,42 +503,44 @@ static void lightrec_plugin_execute_internal(bool block_only)
 	if (block_only)
 		cycles_pcsx = 0;
 
-	u32 cycles_lightrec = cycles_pcsx * 1024;
-	if (unlikely(use_lightrec_interpreter)) {
+	if (use_pcsx_interpreter) {
+		intExecuteBlock(0);
+	} else {
+		u32 cycles_lightrec = cycles_pcsx * 1024;
+		if (unlikely(use_lightrec_interpreter)) {
 			psxRegs.pc = lightrec_run_interpreter(lightrec_state,
 							      psxRegs.pc,
 							      cycles_lightrec);
-	} else {
-		psxRegs.pc = lightrec_execute(lightrec_state,
-					      psxRegs.pc, cycles_lightrec);
-	}
+		} else {
+			psxRegs.pc = lightrec_execute(lightrec_state,
+						      psxRegs.pc, cycles_lightrec);
+		}
 
-	lightrec_tansition_to_pcsx(lightrec_state);
+		lightrec_tansition_to_pcsx(lightrec_state);
 
 		flags = lightrec_exit_flags(lightrec_state);
 
-	if (flags & LIGHTREC_EXIT_SEGFAULT) {
-		#ifdef SHOW_DEBUG
-		fprintf(stderr, "Exiting at cycle 0x%08x\n",
+		if (flags & LIGHTREC_EXIT_SEGFAULT) {
+			fprintf(stderr, "Exiting at cycle 0x%08x\n",
 				psxRegs.cycle);
-		#endif // SHOW_DEBUG
-		exit(1);
-	}
-
-	if (flags & LIGHTREC_EXIT_SYSCALL)
-		psxException(R3000E_Syscall << 2, 0, (psxCP0Regs *)regs->cp0);
-	if (flags & LIGHTREC_EXIT_BREAK)
-		psxException(R3000E_Bp << 2, 0, (psxCP0Regs *)regs->cp0);
-	else if (flags & LIGHTREC_EXIT_UNKNOWN_OP) {
-		u32 op = intFakeFetch(psxRegs.pc);
-		u32 hlec = op & 0x03ffffff;
-		if ((op >> 26) == 0x3b && hlec < ARRAY_SIZE(psxHLEt) && Config.HLE) {
-			lightrec_plugin_sync_regs_to_pcsx(0);
-			psxHLEt[hlec]();
-			lightrec_plugin_sync_regs_from_pcsx(0);
+			exit(1);
 		}
-		else
-			psxException(R3000E_RI << 2, 0, (psxCP0Regs *)regs->cp0);
+
+		if (flags & LIGHTREC_EXIT_SYSCALL)
+			psxException(R3000E_Syscall << 2, 0, (psxCP0Regs *)regs->cp0);
+		if (flags & LIGHTREC_EXIT_BREAK)
+			psxException(R3000E_Bp << 2, 0, (psxCP0Regs *)regs->cp0);
+		else if (flags & LIGHTREC_EXIT_UNKNOWN_OP) {
+			u32 op = intFakeFetch(psxRegs.pc);
+			u32 hlec = op & 0x03ffffff;
+			if ((op >> 26) == 0x3b && hlec < ARRAY_SIZE(psxHLEt) && Config.HLE) {
+				lightrec_plugin_sync_regs_to_pcsx(0);
+				psxHLEt[hlec]();
+				lightrec_plugin_sync_regs_from_pcsx(0);
+			}
+			else
+				psxException(R3000E_RI << 2, 0, (psxCP0Regs *)regs->cp0);
+		}
 	}
 
 	if ((regs->cp0[13] & regs->cp0[12] & 0x300) && (regs->cp0[12] & 0x1)) {
@@ -583,10 +552,6 @@ static void lightrec_plugin_execute_internal(bool block_only)
 
 static void lightrec_plugin_execute(void)
 {
-	extern int stop;
-
-	lightrec_set_unsafe_opt_flags(lightrec_state, Config.hacks.lightrec_hacks);
-
 	while (!stop)
 		lightrec_plugin_execute_internal(false);
 }
@@ -598,8 +563,7 @@ static void lightrec_plugin_execute_block(enum blockExecCaller caller)
 
 static void lightrec_plugin_clear(u32 addr, u32 size)
 {
-	if ((addr == 0 && size == UINT32_MAX)
-	    || (Config.hacks.lightrec_hacks & LIGHTREC_OPT_INV_DMA_ONLY))
+	if (addr == 0 && size == UINT32_MAX)
 		lightrec_invalidate_all(lightrec_state);
 	else
 		/* size * 4: PCSX uses DMA units */
@@ -611,10 +575,8 @@ static void lightrec_plugin_notify(enum R3000Anote note, void *data)
 	switch (note)
 	{
 	case R3000ACPU_NOTIFY_CACHE_ISOLATED:
-		// Sent from psxDma3().
-		break;
 	case R3000ACPU_NOTIFY_CACHE_UNISOLATED:
-		//lightrec_plugin_clear(0, 0x200000/4);
+		/* not used, lightrec calls lightrec_enable_ram() instead */
 		break;
 	case R3000ACPU_NOTIFY_BEFORE_SAVE:
 		/* non-null 'data' means this is HLE related sync */
@@ -640,6 +602,14 @@ static void lightrec_plugin_apply_config()
 static void lightrec_plugin_shutdown(void)
 {
 	lightrec_destroy(lightrec_state);
+
+	if (!LIGHTREC_CUSTOM_MAP) {
+#if P_HAVE_MMAP
+		munmap(code_buffer, CODE_BUFFER_SIZE);
+#else
+		free(code_buffer);
+#endif
+	}
 }
 
 static void lightrec_plugin_reset(void)
@@ -657,7 +627,7 @@ static void lightrec_plugin_reset(void)
 	regs->cp0[12] = 0x10900000; // COP0 enabled | BEV = 1 | TS = 1
 	regs->cp0[15] = 0x00000002; // PRevID = Revision ID, same as R3000A
 
-	lightrec_set_unsafe_opt_flags(lightrec_state, Config.hacks.lightrec_hacks);
+	lightrec_set_unsafe_opt_flags(lightrec_state, lightrec_hacks);
 }
 
 static void lightrec_plugin_sync_regs_from_pcsx(bool need_cp2)
@@ -682,7 +652,7 @@ static void lightrec_plugin_sync_regs_to_pcsx(bool need_cp2)
 		memcpy(&psxRegs.CP2, regs->cp2d, sizeof(regs->cp2d) + sizeof(regs->cp2c));
 }
 
-R3000Acpu psxLightrec =
+R3000Acpu psxRec =
 {
 	lightrec_plugin_init,
 	lightrec_plugin_reset,
@@ -693,19 +663,3 @@ R3000Acpu psxLightrec =
 	lightrec_plugin_apply_config,
 	lightrec_plugin_shutdown,
 };
-
-/* Implement the sysconf() symbol which is needed by GNU Lightning */
-long sysconf(int name)
-{
-	switch (name) {
-	case _SC_PAGE_SIZE:
-		return 4096;
-	default:
-		return -EINVAL;
-	}
-}
-
-mode_t umask(mode_t mask)
-{
-	return mask;
-}
