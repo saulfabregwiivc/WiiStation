@@ -1714,7 +1714,7 @@ static void gpu_sync() {
 	// not implemented...
 	// might be problematic to do because of Config.GpuListWalking
 	if (psxRegs.interrupt & (1u << PSXINT_GPUDMA))
-		log_unhandled("gpu_sync with active dma\n");
+		//log_unhandled("gpu_sync with active dma\n");
 	mips_return_c(0, 21);
 }
 
@@ -3103,7 +3103,7 @@ static void psxBios__card_wait() { // 5d
 
 	// todo
 	if (!(s & 1))
-		log_unhandled("%s %x\n", __func__, s);
+		//log_unhandled("%s %x\n", __func__, s);
 
 	mips_return_c(s, 11);
 }
@@ -3194,7 +3194,7 @@ static void card_vint_handler(void) {
 	case 0:
 		break;
 	default:
-		log_unhandled("%s: unhandled handler %x\n", __func__, handler);
+		//log_unhandled("%s: unhandled handler %x\n", __func__, handler);
 	}
 }
 
