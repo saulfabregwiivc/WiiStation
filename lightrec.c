@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 
 #include "cdrom.h"
+#include "gpu.h"
 #include "gte.h"
 #include "mdec.h"
 #include "psxdma.h"
@@ -20,6 +21,18 @@
 #include "deps/lightrec/lightrec.h"
 
 #define ARRAY_SIZE(x) (sizeof(x) ? sizeof(x) / sizeof((x)[0]) : 0)
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#	define LE32TOH(x)	__builtin_bswap32(x)
+#	define HTOLE32(x)	__builtin_bswap32(x)
+#	define LE16TOH(x)	__builtin_bswap16(x)
+#	define HTOLE16(x)	__builtin_bswap16(x)
+#else
+#	define LE32TOH(x)	(x)
+#	define HTOLE32(x)	(x)
+#	define LE16TOH(x)	(x)
+#	define HTOLE16(x)	(x)
+#endif
 
 #ifdef __GNUC__
 #	define likely(x)       __builtin_expect(!!(x),1)
@@ -72,6 +85,7 @@ enum my_cp2_opcodes {
 };
 
 static void (*cp2_ops[])(struct psxCP2Regs *) = {
+	[OP_CP2_RTPS] = gteRTPS,
 	[OP_CP2_RTPS] = gteRTPS,
 	[OP_CP2_NCLIP] = gteNCLIP,
 	[OP_CP2_OP] = gteOP,
@@ -305,6 +319,14 @@ static void lightrec_enable_ram(struct lightrec_state *state, bool enable)
 
 static bool lightrec_can_hw_direct(u32 kaddr, bool is_write, u8 size)
 {
+	if (is_write && size != 32) {
+		// force32 so must go through handlers
+		if (0x1f801000 <= kaddr && kaddr < 0x1f801024)
+			return false;
+		if ((kaddr & 0x1fffff80) == 0x1f801080) // dma
+			return false;
+	}
+
 	switch (size) {
 	case 8:
 		switch (kaddr) {
@@ -510,11 +532,16 @@ void gen_interupt(psxCP0Regs *cp0)
 
 static void lightrec_plugin_execute_internal(bool block_only)
 {
+	extern int stop;
+
 	struct lightrec_registers *regs;
 	u32 flags, cycles_pcsx;
 
 	regs = lightrec_get_registers(lightrec_state);
 	gen_interupt((psxCP0Regs *)regs->cp0);
+	if (!block_only && stop)
+		return;
+
 	cycles_pcsx = next_interupt - psxRegs.cycle;
 	assert((s32)cycles_pcsx > 0);
 
@@ -523,42 +550,46 @@ static void lightrec_plugin_execute_internal(bool block_only)
 	if (block_only)
 		cycles_pcsx = 0;
 
-	u32 cycles_lightrec = cycles_pcsx * 1024;
-	if (unlikely(use_lightrec_interpreter)) {
+	if (use_pcsx_interpreter) {
+		intExecuteBlock(0);
+	} else {
+		u32 cycles_lightrec = cycles_pcsx * 1024;
+		if (unlikely(use_lightrec_interpreter)) {
 			psxRegs.pc = lightrec_run_interpreter(lightrec_state,
 							      psxRegs.pc,
 							      cycles_lightrec);
-	} else {
-		psxRegs.pc = lightrec_execute(lightrec_state,
-					      psxRegs.pc, cycles_lightrec);
-	}
+		} else {
+			psxRegs.pc = lightrec_execute(lightrec_state,
+						      psxRegs.pc, cycles_lightrec);
+		}
 
-	lightrec_tansition_to_pcsx(lightrec_state);
+		lightrec_tansition_to_pcsx(lightrec_state);
 
 		flags = lightrec_exit_flags(lightrec_state);
 
-	if (flags & LIGHTREC_EXIT_SEGFAULT) {
-		#ifdef SHOW_DEBUG
-		fprintf(stderr, "Exiting at cycle 0x%08x\n",
+		if (flags & LIGHTREC_EXIT_SEGFAULT) {
+			#ifdef SHOW_DEBUG
+			fprintf(stderr, "Exiting at cycle 0x%08x\n",
 				psxRegs.cycle);
-		#endif // SHOW_DEBUG
-		exit(1);
-	}
-
-	if (flags & LIGHTREC_EXIT_SYSCALL)
-		psxException(R3000E_Syscall << 2, 0, (psxCP0Regs *)regs->cp0);
-	if (flags & LIGHTREC_EXIT_BREAK)
-		psxException(R3000E_Bp << 2, 0, (psxCP0Regs *)regs->cp0);
-	else if (flags & LIGHTREC_EXIT_UNKNOWN_OP) {
-		u32 op = intFakeFetch(psxRegs.pc);
-		u32 hlec = op & 0x03ffffff;
-		if ((op >> 26) == 0x3b && hlec < ARRAY_SIZE(psxHLEt) && Config.HLE) {
-			lightrec_plugin_sync_regs_to_pcsx(0);
-			psxHLEt[hlec]();
-			lightrec_plugin_sync_regs_from_pcsx(0);
+			#endif // SHOW_DEBUG
+			exit(1);
 		}
-		else
-			psxException(R3000E_RI << 2, 0, (psxCP0Regs *)regs->cp0);
+
+		if (flags & LIGHTREC_EXIT_SYSCALL)
+			psxException(R3000E_Syscall << 2, 0, (psxCP0Regs *)regs->cp0);
+		if (flags & LIGHTREC_EXIT_BREAK)
+			psxException(R3000E_Bp << 2, 0, (psxCP0Regs *)regs->cp0);
+		else if (flags & LIGHTREC_EXIT_UNKNOWN_OP) {
+			u32 op = intFakeFetch(psxRegs.pc);
+			u32 hlec = op & 0x03ffffff;
+			if ((op >> 26) == 0x3b && hlec < ARRAY_SIZE(psxHLEt) && Config.HLE) {
+				lightrec_plugin_sync_regs_to_pcsx(0);
+				psxHLEt[hlec]();
+				lightrec_plugin_sync_regs_from_pcsx(0);
+			}
+			else
+				psxException(R3000E_RI << 2, 0, (psxCP0Regs *)regs->cp0);
+		}
 	}
 
 	if ((regs->cp0[13] & regs->cp0[12] & 0x300) && (regs->cp0[12] & 0x1)) {
@@ -598,10 +629,8 @@ static void lightrec_plugin_notify(enum R3000Anote note, void *data)
 	switch (note)
 	{
 	case R3000ACPU_NOTIFY_CACHE_ISOLATED:
-		// Sent from psxDma3().
-		break;
 	case R3000ACPU_NOTIFY_CACHE_UNISOLATED:
-		//lightrec_plugin_clear(0, 0x200000/4);
+		/* not used, lightrec calls lightrec_enable_ram() instead */
 		break;
 	case R3000ACPU_NOTIFY_BEFORE_SAVE:
 		/* non-null 'data' means this is HLE related sync */
