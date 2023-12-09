@@ -42,7 +42,8 @@
 #	define unlikely(x)     (x)
 #endif
 
-#define BUF_SIZE 0x400000 // 4 MiB code buffer for Lightrec and DYNAREC
+//#define BUF_SIZE 0x400000 // 4 MiB code buffer for Lightrec and DYNAREC
+#define BUF_SIZE 0x800000 // 8 MiB code buffer for Lightrec and DYNAREC
 char recBuffer[BUF_SIZE] __attribute__((aligned(32)));
 
 //static s8 code_buffer [0x400000] __attribute__((aligned(32)));
