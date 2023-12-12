@@ -75,7 +75,7 @@ enum printToSD
 	SDLOG_ENABLE
 };
 
-extern char frameLimit;
+extern char frameLimit[2];
 enum frameLimit
 {
 	FRAMELIMIT_NONE=0,
@@ -163,7 +163,8 @@ enum videoMode
 {
 	VIDEOMODE_AUTO=0,
 	VIDEOMODE_NTSC,
-	VIDEOMODE_PAL,
+	VIDEOMODE_PAL50,
+	VIDEOMODE_PAL60,
 	VIDEOMODE_PROGRESSIVE
 };
 
@@ -181,21 +182,37 @@ enum padAutoAssign
 	PADAUTOASSIGN_AUTOMATIC
 };
 
-extern char padType[2];
+extern char padType[10];
 enum padType
 {
 	PADTYPE_NONE=0,
 	PADTYPE_GAMECUBE,
-	PADTYPE_WII
+	PADTYPE_WII,
+	PADTYPE_MULTITAP
+
 };
 
-extern char padAssign[2];
+extern char padAssign[10];
 enum padAssign
 {
 	PADASSIGN_INPUT0=0,
 	PADASSIGN_INPUT1,
-	PADASSIGN_INPUT2,
-	PADASSIGN_INPUT3
+	PADASSIGN_INPUT0A,
+	PADASSIGN_INPUT0B,
+	PADASSIGN_INPUT0C,
+	PADASSIGN_INPUT0D,
+	PADASSIGN_INPUT1A,
+	PADASSIGN_INPUT1B,
+	PADASSIGN_INPUT1C,
+	PADASSIGN_INPUT1D,
+};
+
+extern char padLightgun[10];
+enum padLightgun
+{
+	PADLIGHTGUN_DISABLE=0,
+	PADLIGHTGUN_ENABLE,
+
 };
 
 extern char rumbleEnabled;
@@ -232,7 +249,6 @@ enum numMultitaps
 };
 
 extern char lang;
-extern char oldLang;
 enum lang
 {
 	ENGLISH = 0,
@@ -241,10 +257,13 @@ enum lang
 	SPANISH,
 	PORTUGUESE,
 	ITALIAN,
+	GERMAN,
 	TRAD_CHINESE,
 	JAPANESE,
-	GERMAN,
-	FRENCH
+	FRENCH,
+	BRAZILIAN_PORTUGUESE,
+	CATALAN,
+	TURKISH
 };
 
 extern char originalMode;
@@ -286,11 +305,20 @@ extern char lightGun;
 enum lightGun
 {
 	LIGHTGUN_DISABLE=0,
-	LIGHTGUN_ENABLE,
+	LIGHTGUN_GUNCON,
+	LIGHTGUN_JUST,
+	LIGHTGUN_MOUSE,
 };
+
+extern char memCard[2];
+enum memCard
+{
+	MEMCARD_DISABLE=0,
+	MEMCARD_ENABLE,
+};
+
 
 extern const unsigned char En_dat[];
 extern const unsigned int  En_dat_size;
-extern char canChangeFont;
 
 #endif //WIISXCONFIG_H

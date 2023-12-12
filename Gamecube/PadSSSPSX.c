@@ -53,22 +53,26 @@ static struct
 {
 	SSSConfig config;	//unused?
 	//int devcnt;			//unused
-	u16 padStat[2];		//Digital Buttons
-	int padID[2];
-	int padMode1[2];	//0 = digital, 1 = analog
-	int padMode2[2];
-	int padModeE[2];	//Config/Escape mode??
-	int padModeC[2];
-	int padModeF[2];
-	int padVib0[2];		//Command byte for small motor
-	int padVib1[2];		//Command byte for large motor
-	int padVibF[2][4];	//Sm motor value; Big motor value; Sm motor running?; Big motor running?
-	//int padVibC[2];		//unused
-	u64 padPress[2][16];//unused?
+	u16 padStat[10];		//Digital Buttons
+	int padID[10];
+	int padMode1[10];	//0 = digital, 1 = analog
+	int padMode2[10];
+	int padModeE[10];	//Config/Escape mode??
+	int padModeC[10];
+	int padModeF[10];
+	int padVib0[10];		//Command byte for small motor
+	int padVib1[10];		//Command byte for large motor
+	int padVibF[10][4];	//Sm motor value; Big motor value; Sm motor running?; Big motor running?
+	//int padVibC[10];		//unused
+	u64 padPress[10][16];//unused?
 	int curPad;			//0=pad1; 1=pad2
 	int curByte;		//current command/data byte
 	int curCmd;			//current command from PSX/PS2
 	int cmdLen;			//# of bytes in pad reply
+	int irq10En[10];	// enable IRQ10 output for lightgun port
+	int isConnected[10];	// is controller connected?
+	int trAll[2];			// transfer all mode select
+	int multiPad[2];	// which controller is connected to the multipad
 } global;
 
 extern void SysPrintf(char *fmt, ...);
@@ -77,8 +81,10 @@ extern int stop;
 /* Controller type, later do this by a Variable in the GUI */
 //extern char controllerType = 0; // 0 = standard, 1 = analog (analog fails on old games)
 extern long  PadFlags;
+extern int gLightgun;
+extern int gMouse[4];
 
-extern virtualControllers_t virtualControllers[2];
+extern virtualControllers_t virtualControllers[10];
 
 // Use to invoke func on the mapped controller with args
 #define DO_CONTROL(Control,func,args...) \
@@ -86,6 +92,58 @@ extern virtualControllers_t virtualControllers[2];
 		virtualControllers[Control].number, ## args)
 
 void assign_controller(int wv, controller_t* type, int wp);
+
+void setIrq( u32 irq )
+{
+    psxHu32ref(0x1070) |= irq;
+}
+
+void lightgunInterrupt()
+{
+	int cursorX;
+	int cursorY;
+	int Control;
+	WPADData* wpad = WPAD_Data(0);
+
+
+	if (global.irq10En[0] == 0x10) Control = 0;
+	else if (global.irq10En[1] == 0x10) Control = 1;
+	else return;
+
+	if ((global.padID[Control] != 0x31) && (global.padID[Control] != 0x63))
+		return;
+
+	if(screenMode == 2)	cursorX = ((wpad[virtualControllers[Control].number].ir.x*848/640 - 104));
+	else cursorX = (wpad[virtualControllers[Control].number].ir.x);
+
+	cursorY = (wpad[virtualControllers[Control].number].ir.y/2);
+
+
+
+	if ((cursorY > 5) && (cursorY < 220) && wpad[virtualControllers[Control].number].ir.valid){
+		if (gLightgun == 5){
+		gLightgun--;
+		set_event(PSXINT_LIGHTGUN, (Config.PsxType ? 2157: 2146)*(cursorY + (Config.PsxType ? 40 : 0)));
+		return;
+		}
+
+
+		if (gLightgun>0){
+			setIrq( SWAPu32((u32)0x400) );
+			gLightgun--;
+			psxRcntWcount(0,(cursorX*(rcnts[0].rate < 5 ? 2.52 : 0.4))+ (rcnts[0].rate < 5 ? 115 : 0) );
+			set_event(PSXINT_LIGHTGUN, (Config.PsxType ? 2157: 2146));
+		}
+	}
+}
+
+static inline u8 SetSensitivity(int a, float sensitivity)
+{
+	a -= 128;
+	a *= sensitivity;
+	if(a >= 128) a = 127; else if(a < -128) a = -128; // clamp
+	return a + 128; // PSX controls range 0-255
+}
 
 static void PADsetMode (const int pad, const int mode)	//mode = 0 (digital) or 1 (analog)
 {
@@ -104,8 +162,15 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 	const int vib1 = global.padVibF[pad][1] ? 1 : 0;
 	int cursorX = 0x1;
 	int cursorY = 0xA; 
+	int curMouse;
+	static int tempcursorX[4];
+	static int tempcursorY[4]; 
+	static int oldcursorX[4];
+	static int oldcursorY[4]; 
 	static BUTTONS PAD_Data;
 	static WPADData* wpad;
+	float sensitivity;
+	int miscButton;
 
 	//TODO: Rework/simplify the following code & reset BUTTONS when no controller in use
 	int Control = pad;
@@ -126,27 +191,70 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 				assign_controller(Control, &controller_Classic, virtualControllers[Control].number);
 		}
 	}
-	
-	if (lightGun == LIGHTGUN_ENABLE){
+
+	if (lightGun && padLightgun[pad]){
 		if (virtualControllers[Control].control == &controller_Wiimote || 
 			virtualControllers[Control].control == &controller_WiimoteNunchuk){
-				global.padID[pad] = 0x63;
-				wpad = WPAD_Data(0);
-				cursorX = (wpad[virtualControllers[Control].number].ir.x/1.8)+80;
-				cursorY = (wpad[virtualControllers[Control].number].ir.y/2); 
-				
-				if (!wpad[virtualControllers[Control].number].ir.valid){
-					cursorX = 0x1;
-					cursorY = 0xA; 
+				if (lightGun == LIGHTGUN_GUNCON){
+					global.padID[pad] = 0x63;
+					wpad = WPAD_Data(0);
+					if(screenMode == 2)	cursorX = ((wpad[virtualControllers[Control].number].ir.x*848/640 - 104)/1.72) + 75;
+					else cursorX = (wpad[virtualControllers[Control].number].ir.x/1.72) + 75;
+					
+					cursorY = (wpad[virtualControllers[Control].number].ir.y/2) + (Config.PsxType ? 48 : 25); 
+					
+					if (!wpad[virtualControllers[Control].number].ir.valid){
+						cursorX = 0x1;
+						cursorY = 0xA; 
+					}
 				}
+				else if (lightGun == LIGHTGUN_MOUSE){
+					curMouse = virtualControllers[Control].number;
+					global.padID[pad] = 0x12;
+					if (!gMouse[curMouse]){				
+						wpad = WPAD_Data(0);
+						
+						if(screenMode == 2)	cursorX = wpad[curMouse].ir.x*848/640 - 104;
+						else cursorX = wpad[curMouse].ir.x;
+						tempcursorX[curMouse] = cursorX;					
+						sensitivity = virtualControllers[Control].config->sensitivity;
+						if (sensitivity < 0.1) sensitivity = 1.0;					
+						cursorX = (cursorX - oldcursorX[curMouse]) * sensitivity;
+						if (cursorX > 127) cursorX = 127;
+						if (cursorX < -128) cursorX = -128;
+						
+						cursorY = wpad[curMouse].ir.y;
+						tempcursorY[curMouse] = cursorY;
+						cursorY = (cursorY - oldcursorY[curMouse]) * sensitivity;
+						if (cursorY > 127) cursorY = 127;
+						if (cursorY < -128) cursorY = -128;
+						
+						cursorX = (cursorX & 0xFF) | (cursorY<<8);
+						
+						oldcursorX[curMouse] = tempcursorX[curMouse];
+						oldcursorY[curMouse] = tempcursorY[curMouse];
+						tempcursorX[curMouse] = cursorX;
+						
+						if (!wpad[curMouse].ir.valid){
+							cursorX = 0;
+						}
+						gMouse[curMouse] = 1;
+					}
+					else{
+						cursorX = tempcursorX[curMouse];
+					}
+				}
+				
+				else 
+					global.padID[pad] = 0x31;
 			}
 		else{
-			if (global.padID[pad] == 0x63)
+			if ((global.padID[pad] == 0x31) || (global.padID[pad] == 0x63) || (global.padID[pad] == 0x12))
 			PADsetMode( pad, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);
 		}
 	}
 	else{
-		if (global.padID[pad] == 0x63)
+		if ((global.padID[pad] == 0x31) || (global.padID[pad] == 0x63) || (global.padID[pad] == 0x12))
 		PADsetMode( pad, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);
 	}
 #endif
@@ -156,23 +264,43 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 
 	if(virtualControllers[Control].inUse)
 	{
-		if(DO_CONTROL(Control, GetKeys, (BUTTONS*)&PAD_Data, virtualControllers[Control].config))
+		global.isConnected[pad] = 1;
+		
+		miscButton = DO_CONTROL(Control, GetKeys, (BUTTONS*)&PAD_Data, virtualControllers[Control].config);
+		if (miscButton == 1)
 			stop = 1;
+		else if (Control == 0 || Control == 2)
+			frameLimit[0] = (miscButton == 0 ? frameLimit[1] : 0);
 	}
 	else
 	{	//TODO: Emulate no controller present in this case.
 		//Reset buttons & sticks if PAD is not in use
+		global.isConnected[pad] = 0;
 		PAD_Data.btns.All = 0xFFFF;
 		PAD_Data.leftStickX = PAD_Data.leftStickY = PAD_Data.rightStickX = PAD_Data.rightStickY = 128;
 	}
-	
-	
-	
+
+	sensitivity = virtualControllers[Control].config->sensitivity;
+	if (sensitivity < 0.1) sensitivity = 1.0;
+	PAD_Data.leftStickX = SetSensitivity(PAD_Data.leftStickX, sensitivity);
+	PAD_Data.leftStickY = SetSensitivity(PAD_Data.leftStickY, sensitivity);
+	PAD_Data.rightStickX = SetSensitivity(PAD_Data.rightStickX, sensitivity);
+	PAD_Data.rightStickY = SetSensitivity(PAD_Data.rightStickY, sensitivity);
+
 	global.padStat[pad] = (((PAD_Data.btns.All>>8)&0xFF) | ( (PAD_Data.btns.All<<8) & 0xFF00 )) &0xFFFF;
 	
 	
-	if (global.padID[pad] == 0x63){
-		if (pad==0)
+	if ((global.padID[pad] == 0x31) || (global.padID[pad] == 0x63) || (global.padID[pad] == 0x12)){
+		if (lightGun == LIGHTGUN_GUNCON) global.padStat[pad] |= ~0x860;
+		else if (lightGun == LIGHTGUN_JUST) global.padStat[pad] |= ~0x8c0;
+		else {
+			if (!(global.padStat[pad] & 0x40)) // X button
+				cursorX = 0;
+			global.padStat[pad] |= ~0xF;
+		}
+			
+		
+		if ((pad==0) || (padType[global.curPad] == PADTYPE_MULTITAP))
 		{
 			lastport1.leftJoyX = cursorY & 0xFF; lastport1.leftJoyY = cursorY >> 8;
 			lastport1.rightJoyX = cursorX & 0xFF; lastport1.rightJoyY = cursorX >> 8;
@@ -186,7 +314,7 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 		}
 	}
 	else{
-		if (pad==0)
+		if ((pad==0) || (padType[global.curPad] == PADTYPE_MULTITAP))
 		{
 			lastport1.leftJoyX = PAD_Data.leftStickX; lastport1.leftJoyY = PAD_Data.leftStickY;
 			lastport1.rightJoyX = PAD_Data.rightStickX; lastport1.rightJoyY = PAD_Data.rightStickY;
@@ -216,15 +344,16 @@ static void UpdateState (const int pad) //Note: pad = 0 or 1
 
 long SSS_PADopen (void *p)
 {
+	int i;
 	if (!pad_initialized)
 	{
 		memset (&global, 0, sizeof (global));
 		memset( &lastport1, 0, sizeof(lastport1) ) ;
 		memset( &lastport2, 0, sizeof(lastport2) ) ;
-		global.padStat[0] = 0xffff;
-		global.padStat[1] = 0xffff;
-		PADsetMode (0, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port 0, analog
-		PADsetMode (1, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port 1, analog
+		for(i = 0; i < 10; i++){
+			global.padStat[i] = 0xffff;
+			PADsetMode (i, controllerType == CONTROLLERTYPE_ANALOG ? 1 : 0);  //port 0, analog
+		}
 	}
 	return 0;
 }
@@ -247,6 +376,14 @@ unsigned char SSS_PADstartPoll (int pad)
 	global.curPad = pad -1;
 	global.curByte = 0;
 	return 0xff;
+}
+
+void SSS_SetMultiPad(int pad, int mpad)
+{
+	if (pad)
+		global.multiPad[1] = mpad+5;
+	else
+		global.multiPad[0] = mpad+1;
 }
 
 static const u8 cmd40[8] =
@@ -288,9 +425,20 @@ static const u8 cmd4f[8] = //Enable/disable digital/analog responses bits; only 
 	0xff, 0x5a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5a,
 };
 
+unsigned char multitap[34] = { 0x80, 0x5a,
+									0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+									0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+									0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+									0x41, 0x5a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
 unsigned char SSS_PADpoll (const unsigned char value)
 {
-	const int pad = global.curPad;
+	int i, offset, offsetSlot;
+	int pad = global.curPad;
+	int slot = pad;
+	if (padType[slot] == PADTYPE_MULTITAP)
+		pad = global.multiPad[slot];
+
 	const int cur = global.curByte;
 
 //Pragma to avoid packing on "buffer" union
@@ -298,8 +446,8 @@ unsigned char SSS_PADpoll (const unsigned char value)
 #pragma pack(push,1)
 	union buffer
 	{
-		u16 b16[10];
-		u8  b8[20];
+		u16 b16[20];
+		u8  b8[40];
 	};
 
 	static union buffer buf;
@@ -309,7 +457,11 @@ unsigned char SSS_PADpoll (const unsigned char value)
 		global.curCmd = value;
 		if (controllerType != CONTROLLERTYPE_ANALOG)
 		{
-			global.curCmd = 0x42;
+			if (value != 0x42)
+				if (padType[slot] == PADTYPE_MULTITAP)
+					return 0xFF;
+				else
+				global.curCmd = 0x42;
 		}
 		switch (global.curCmd)
 		{
@@ -322,7 +474,32 @@ unsigned char SSS_PADpoll (const unsigned char value)
 			memcpy (buf.b8, cmd41, sizeof (cmd41));
 			return 0xf3;
 		case 0x42:
-			UpdateState (pad);
+			if (padType[slot] == PADTYPE_MULTITAP){
+				if (global.trAll[slot] == 1){
+					global.cmdLen = sizeof (multitap);
+					memcpy (buf.b8, multitap, sizeof (multitap));
+					offsetSlot = 2+(slot*4);
+					for(i = 0; i < 4; i++) {
+						UpdateState (i+offsetSlot);
+						offset = i*8;
+						if (global.isConnected[i+offsetSlot]) {
+							buf.b8[2+offset] = global.padID[i+offsetSlot];
+							}
+						else {
+							buf.b8[2+offset] = 0xFF;
+							buf.b8[3+offset] = 0xFF;
+							}
+						buf.b8[6+offset] = lastport1.rightJoyX ;
+						buf.b8[7+offset] = lastport1.rightJoyY ;
+						buf.b8[8+offset] = lastport1.leftJoyX ;
+						buf.b8[9+offset] = lastport1.leftJoyY ;
+						buf.b16[2+(i*4)] = global.padStat[i+offsetSlot];
+					}
+					return 0x80;
+				}
+			}
+			UpdateState(pad);
+
 		case 0x43:
 			global.cmdLen = 2 + 2 * (global.padID[pad] & 0x0f);
 			buf.b8[1] = global.padModeC[pad] ? 0x00 : 0x5a;
@@ -335,10 +512,19 @@ unsigned char SSS_PADpoll (const unsigned char value)
 			}
 			else
 			{
-				buf.b8[4] = pad ? lastport2.rightJoyX : lastport1.rightJoyX ;
-				buf.b8[5] = pad ? lastport2.rightJoyY : lastport1.rightJoyY ;
-				buf.b8[6] = pad ? lastport2.leftJoyX : lastport1.leftJoyX ;
-				buf.b8[7] = pad ? lastport2.leftJoyY : lastport1.leftJoyY ;
+				if (padType[slot] != PADTYPE_MULTITAP){
+					buf.b8[4] = pad ? lastport2.rightJoyX : lastport1.rightJoyX ;
+					buf.b8[5] = pad ? lastport2.rightJoyY : lastport1.rightJoyY ;
+					buf.b8[6] = pad ? lastport2.leftJoyX : lastport1.leftJoyX ;
+					buf.b8[7] = pad ? lastport2.leftJoyY : lastport1.leftJoyY ;
+				}
+				else{
+					buf.b8[4] = lastport1.rightJoyX ;
+					buf.b8[5] = lastport1.rightJoyY ;
+					buf.b8[6] = lastport1.leftJoyX ;
+					buf.b8[7] = lastport1.leftJoyY ;
+				}
+
 				//if (global.padID[pad] == 0x79)
 				//{
   				// do some pressure stuff (this is for PS2 only!)
@@ -386,6 +572,10 @@ unsigned char SSS_PADpoll (const unsigned char value)
 			global.padVibF[pad][0] = value;
 		if (cur == global.padVib1[pad])
 			global.padVibF[pad][1] = value;
+		if (cur == 2)
+			global.irq10En[slot] = value;
+		if (cur == 1 && padType[slot] == PADTYPE_MULTITAP)
+			global.trAll[slot] = value & 1;
 		break;
 	case 0x43:
 		if (cur == 2)
@@ -445,6 +635,8 @@ unsigned char SSS_PADpoll (const unsigned char value)
 		}
 		break;
 	}
+
+
 	if (cur >= global.cmdLen)
 		return 0;
 	return buf.b8[global.curByte++];

@@ -119,8 +119,14 @@ typedef struct
  unsigned int      bFMod:2;                            // freq mod (0=off, 1=sound channel, 2=freq channel)
  unsigned int      prevflags:3;                        // flags from previous block
  unsigned int      bIgnoreLoop:1;                      // Ignore loop
- int               iLeftVolume;                        // left volume
- int               iRightVolume;                       // right volume
+ unsigned int      bNewPitch:1;                        // pitch changed
+ union {
+  struct {
+   int             iLeftVolume;                        // left volume
+   int             iRightVolume;                       // right volume
+  };
+  int              iVolume[2];
+ };
  ADSRInfoEx        ADSRX;
  int               iRawPitch;                          // raw pitch (0...3fff)
 } SPUCHAN;
@@ -187,13 +193,9 @@ typedef struct
  unsigned short  spuStat;
 
  unsigned int    spuAddr;
- union {
-  unsigned char  *spuMemC;
-  unsigned short *spuMem;
- };
- unsigned char * pSpuIrq;
 
  unsigned int    cycles_played;
+ unsigned int    cycles_dma_end;
  int             decode_pos;
  int             decode_dirty_ch;
  unsigned int    bSpuInit:1;
@@ -206,17 +208,37 @@ typedef struct
  unsigned int    dwChannelsAudible;    // not silent channels
  unsigned int    dwChannelDead;        // silent+not useful channels
 
- //unsigned char   spuBuffer[NUM_SPU_BUFFERS][32768] __attribute__((aligned(32)));
- //unsigned int    whichBuffer;
+ unsigned int    XARepeat;
+ unsigned int    XALastVal;
+
+ int             iLeftXAVol;
+ int             iRightXAVol;
+
+ struct {                              // channel volume in the cd controller
+  unsigned char  ll, lr, rl, rr;       // see cdr.Attenuator* in cdrom.c
+ } cdv;                                // applied on spu side for easier emulation
+
+ unsigned int    last_keyon_cycles;
+
+ union {
+  unsigned char  *spuMemC;
+  unsigned short *spuMem;
+ };
+ unsigned char * pSpuIrq;
 
  unsigned char * pSpuBuffer;
  short         * pS;
 
- void (CALLBACK *irqCallback)(void);   // func of main emu, called on spu irq
- void (CALLBACK *cddavCallback)(unsigned short,unsigned short);
+ SPUCHAN       * s_chan;
+ REVERBInfo    * rvb;
+
+ int           * SSumLR;
+
+ void (CALLBACK *irqCallback)(int);
+ //void (CALLBACK *cddavCallback)(short, short);
  void (CALLBACK *scheduleCallback)(unsigned int);
 
- xa_decode_t   * xapGlobal;
+ const xa_decode_t * xapGlobal;
  unsigned int  * XAFeed;
  unsigned int  * XAPlay;
  unsigned int  * XAStart;
@@ -227,24 +249,11 @@ typedef struct
  unsigned int  * CDDAStart;
  unsigned int  * CDDAEnd;
 
- unsigned int    XARepeat;
- unsigned int    XALastVal;
-
- unsigned int    CDDARepeat;
- unsigned int    CDDALastVal;
-
- int             iLeftXAVol;
- int             iRightXAVol;
-
- SPUCHAN       * s_chan;
- REVERBInfo    * rvb;
-
  // buffers
  int           * SB;
- int           * SSumLR;
 
- int             pad[29];
  unsigned short  regArea[0x400];
+ int             interpolation;
 } SPUInfo;
 
 #define regAreaGet(offset) \
@@ -258,13 +267,20 @@ typedef struct
 
 extern SPUInfo spu;
 
-int do_samples(unsigned int cycles_to, int do_sync);
+void do_samples(unsigned int cycles_to, int do_sync);
 void schedule_next_irq(void);
+void check_irq_io(unsigned int addr);
+void do_irq_io(int cycles_after);
 
-#define do_samples_if_needed(c, sync) \
- do { \
-  if (sync || (int)((c) - spu.cycles_played) >= 16 * 768) \
-   do_samples(c, sync); \
- } while (0)
+// WiiStation handles audio at a frequency of 4800 on the SPU,
+// and the operation of the SPU accelerator is also different. Therefore, this processing is not required here.
+// Otherwise, the sound of some games may not be smooth enough.
+#define do_samples_if_needed(c, sync, samples)
+
+//#define do_samples_if_needed(c, sync, samples) \
+// do { \
+//  if (sync || (int)((c) - spu.cycles_played) >= (samples) * 768) \
+//   do_samples(c, sync); \
+// } while (0)
 
 #endif /* __P_SOUND_EXTERNALS_H__ */

@@ -21,6 +21,7 @@
 * Miscellaneous functions, including savestates and CD-ROM loading.
 */
 
+#include <assert.h>
 #include "misc.h"
 #include "cdrom.h"
 #include "psxhw.h"
@@ -31,6 +32,7 @@
 #include "Gamecube/fileBrowser/fileBrowser-libfat.h"
 
 #include "dfsound/externals.h"
+#include "database.h"
 
 int Log = 0;
 
@@ -107,6 +109,17 @@ void mmssdd( char *b, char *p )
 	READTRACK(); \
 	memcpy(_dir + 2048, buf + 12, 2048);
 
+static void events_restore(void)
+{
+	int i;
+	for (i = 0; i < PSXINT_COUNT; i++)
+		event_cycles[i] = psxRegs.intCycle[i].sCycle + psxRegs.intCycle[i].cycle;
+
+	event_cycles[PSXINT_RCNT] = psxNextsCounter + psxNextCounter;
+	psxRegs.interrupt |=  1 << PSXINT_RCNT;
+	psxRegs.interrupt &= (1 << PSXINT_COUNT) - 1;
+}
+
 int GetCdromFile(u8 *mdir, u8 *time, char *filename) {
 	struct iso_directory_record *dir;
 	int retval = -1;
@@ -147,26 +160,44 @@ int GetCdromFile(u8 *mdir, u8 *time, char *filename) {
 	return retval;
 }
 
-static const unsigned int gpu_ctl_def[] = {
-	0x00000000, 0x01000000, 0x03000000, 0x04000000,
-	0x05000800, 0x06c60260, 0x0703fc10, 0x08000027,
-};
-
-static const unsigned int gpu_data_def[] = {
-	0xe100360b, 0xe2000000, 0xe3000800, 0xe4077e7f,
-	0xe5001000, 0xe6000000,
-	0x02000000, 0x00000000, 0x01ff03ff,
-};
-
-static void fake_bios_gpu_setup(void)
+static void SetBootRegs(u32 pc, u32 gp, u32 sp)
 {
-	int i;
+	//printf("%s %08x %08x %08x\n", __func__, pc, gp, sp);
+	psxCpu->Notify(R3000ACPU_NOTIFY_BEFORE_SAVE, NULL);
 
-	for (i = 0; i < sizeof(gpu_ctl_def) / sizeof(gpu_ctl_def[0]); i++)
-		GPU_writeStatus(gpu_ctl_def[i]);
+	psxRegs.pc = pc;
+	psxRegs.GPR.n.gp = gp;
+	psxRegs.GPR.n.sp = sp ? sp : 0x801fff00;
+	psxRegs.GPR.n.fp = psxRegs.GPR.n.sp;
 
-	for (i = 0; i < sizeof(gpu_data_def) / sizeof(gpu_data_def[0]); i++)
-		GPU_writeData(gpu_data_def[i]);
+	psxRegs.GPR.n.t0 = psxRegs.GPR.n.sp; // mimic A(43)
+	psxRegs.GPR.n.t3 = pc;
+
+	psxCpu->Notify(R3000ACPU_NOTIFY_AFTER_LOAD, NULL);
+}
+
+int BiosBootBypass() {
+	struct CdrStat stat = { 0, 0, };
+	assert(psxRegs.pc == 0x80030000);
+
+	// no bypass if the lid is open
+	CDR__getStatus(&stat);
+	if (stat.Status & 0x10)
+		return 0;
+
+	// skip BIOS logos and region check
+	psxCpu->Notify(R3000ACPU_NOTIFY_BEFORE_SAVE, NULL);
+	psxRegs.pc = psxRegs.GPR.n.ra;
+	return 1;
+}
+
+static void getFromCnf(char *buf, const char *key, u32 *val)
+{
+	buf = strstr(buf, key);
+	if (buf)
+		buf = strchr(buf, '=');
+	if (buf)
+		*val = strtol(buf + 1, NULL, 16);
 }
 
 int LoadCdrom() {
@@ -175,18 +206,12 @@ int LoadCdrom() {
 	u8 time[4], *buf;
 	u8 mdir[4096];
 
-    if (!swapIso) {
-        // not the best place to do it, but since BIOS boot logo killer
-	    // is just below, do it here
-	    fake_bios_gpu_setup();
-    } else {
-        swapIso = false;
-    }
-
 	if (!Config.HLE) {
-		if(!LoadCdBios)
-  	  psxRegs.pc = psxRegs.GPR.n.ra;
-    return 0;
+		if (psxRegs.pc != 0x80030000) // BiosBootBypass'ed or custom BIOS?
+			return 0;
+		if (!LoadCdBios)
+  	        psxRegs.pc = psxRegs.GPR.n.ra;
+        return 0;
 	}
 
 	time[0] = itob(0); time[1] = itob(2); time[2] = itob(0x10);
@@ -238,16 +263,13 @@ int LoadCdrom() {
 
 	memcpy(&tmpHead, buf + 12, sizeof(EXE_HEADER));
 
-	psxRegs.pc = SWAP32(tmpHead.pc0);
-	psxRegs.GPR.n.gp = SWAP32(tmpHead.gp0);
-	psxRegs.GPR.n.sp = SWAP32(tmpHead.s_addr);
-	if (psxRegs.GPR.n.sp == 0) psxRegs.GPR.n.sp = 0x801fff00;
+	SetBootRegs(SWAP32(tmpHead.pc0), SWAP32(tmpHead.gp0), SWAP32(tmpHead.s_addr));
 
 	tmpHead.t_size = SWAP32(tmpHead.t_size);
 	tmpHead.t_addr = SWAP32(tmpHead.t_addr);
 
 	psxCpu->Clear(tmpHead.t_addr, tmpHead.t_size / 4);
-	psxCpu->Reset();
+	//psxCpu->Reset();
 
 	// Read the rest of the main executable
 	while (tmpHead.t_size & ~2047) {
@@ -270,10 +292,19 @@ int LoadCdromFile(char *filename, EXE_HEADER *head) {
 	u8 time[4],*buf;
 	u8 mdir[4096];
 	char exename[256];
+	const char *p1, *p2;
 	u32 size, addr;
 	void *mem;
 
-	sscanf(filename, "cdrom:\\%255s", exename);
+	if (filename == INVALID_PTR)
+		return -1;
+
+	p1 = filename;
+	if ((p2 = strchr(p1, ':')))
+		p1 = p2 + 1;
+	while (*p1 == '\\')
+		p1++;
+	snprintf(exename, sizeof(exename), "%s", p1);
 
 	time[0] = itob(0); time[1] = itob(2); time[2] = itob(0x10);
 
@@ -291,11 +322,11 @@ int LoadCdromFile(char *filename, EXE_HEADER *head) {
 	READTRACK();
 
 	memcpy(head, buf + 12, sizeof(EXE_HEADER));
-	size = head->t_size;
-	addr = head->t_addr;
+	size = SWAP32(head->t_size);
+	addr = SWAP32(head->t_addr);
 
 	psxCpu->Clear(addr, size / 4);
-	psxCpu->Reset();
+	//psxCpu->Reset();
 
 	psxRegs.ICache_valid = FALSE;
 
@@ -304,7 +335,7 @@ int LoadCdromFile(char *filename, EXE_HEADER *head) {
 		READTRACK();
 
 		mem = PSXM(addr);
-		if (mem)
+		if (mem != INVALID_PTR)
 			memcpy(mem, buf + 12, 2048);
 
 		size -= 2048;
@@ -404,7 +435,7 @@ int CheckCdrom() {
 			Config.PsxType = PSX_TYPE_PAL; // pal
 		else Config.PsxType = PSX_TYPE_NTSC; // ntsc
 	}
-	//psxUpdateVSyncRate();
+
 	if (CdromLabel[0] == ' ') {
 		memcpy(CdromLabel, CdromId, 9);
 	}
@@ -420,7 +451,10 @@ int CheckCdrom() {
       CdromId[i]=0;
     }
   }
-    // xjsxjs197 mem too small
+
+	Apply_Hacks_Cdrom();
+
+	// xjsxjs197 mem too small
 	// BuildPPFCache();
 
 	return 0;
@@ -472,11 +506,7 @@ int Load(fileBrowser_file *exe) {
 				isoFile_readFile(exe, &tmpHead, sizeof(EXE_HEADER));
 				isoFile_seekFile(exe, 0x800, FILE_BROWSER_SEEK_SET);
 				isoFile_readFile(exe, (void *)PSXM(SWAP32(tmpHead.t_addr)), SWAP32(tmpHead.t_size));
-				psxRegs.pc = SWAP32(tmpHead.pc0);
-				psxRegs.GPR.n.gp = SWAP32(tmpHead.gp0);
-				psxRegs.GPR.n.sp = SWAP32(tmpHead.s_addr);
-				if (psxRegs.GPR.n.sp == 0)
-					psxRegs.GPR.n.sp = 0x801fff00;
+				SetBootRegs(SWAP32(tmpHead.pc0), SWAP32(tmpHead.gp0), SWAP32(tmpHead.s_addr));
 				retval = 0;
 				break;
 			case CPE_EXE:
@@ -498,7 +528,7 @@ int Load(fileBrowser_file *exe) {
 
 // STATES
 void LoadingBar_showBar(float percent, const char* string);
-const char PcsxHeader[32] = "STv3 PCSX v";
+const char PcsxHeader[32] = "STv4 PCSX v";
 char* statespath = "/wiisxrx/savestates/";
 static unsigned int savestates_slot = 0;
 extern unsigned char  *psxVub;
@@ -518,72 +548,95 @@ void savestates_select_slot(unsigned int s)
    savestates_slot = s;
 }
 
-void lightrec_plugin_sync_regs_to_pcsx(void);
-void lightrec_plugin_sync_regs_from_pcsx(void);
+#define MISC_MAGIC 0x4353494d
+struct misc_save_data {
+	u32 magic;
+	u32 gteBusyCycle;
+	u32 muldivBusyCycle;
+	u32 biuReg;
+	u32 biosBranchCheck;
+	u32 gpuIdleAfter;
+	u32 gpuSr;
+	u32 frame_counter;
+	int CdromFrontendId;
+};
 
 int SaveState() {
-
-  gzFile f;
-  GPUFreeze_t *gpufP;
+    struct misc_save_data *misc = (void *)(psxH + 0xf000);
+    gzFile f;
+    GPUFreeze_t *gpufP;
 	SPUFreeze_t *spufP;
+
 	int Size;
 	unsigned char *pMem;
 	char *filename;
 
-  /* fix the filename to %s.st%u format */
+	//assert(!psxRegs.branching);
+	//assert(!psxRegs.cpuInRecursion);
+	//assert(!misc->magic); // After SaveState ->LoadState, attempting to save the state again will result in an error
+	misc->magic = MISC_MAGIC;
+	misc->gteBusyCycle = psxRegs.gteBusyCycle;
+	misc->muldivBusyCycle = psxRegs.muldivBusyCycle;
+	misc->biuReg = psxRegs.biuReg;
+	misc->biosBranchCheck = psxRegs.biosBranchCheck;
+	misc->gpuIdleAfter = psxRegs.gpuIdleAfter;
+	misc->gpuSr = HW_GPU_STATUS;
+	misc->frame_counter = frame_counter;
+	//misc->CdromFrontendId = CdromFrontendId;
+
+    /* fix the filename to %s.st%u format */
 	filename = malloc(1024);
 
-#ifdef HW_RVL
-  sprintf(filename, "%s%s%s.st%u",(saveStateDevice==SAVESTATEDEVICE_USB)?"usb:":"sd:",
+    #ifdef HW_RVL
+        sprintf(filename, "%s%s%s.st%u",(saveStateDevice==SAVESTATEDEVICE_USB)?"usb:":"sd:",
                            statespath, CdromId, savestates_slot);
-#else
-  sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
-#endif
+    #else
+        sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
+    #endif
 
 	f = gzopen(filename, "wb");
-  free(filename);
+    free(filename);
 
-  if(!f) {
-  	return 0;
+    if (!f) {
+  	    return 0;
 	}
 
-  new_dyna_before_save();
+    psxCpu->Notify(R3000ACPU_NOTIFY_BEFORE_SAVE, NULL);
 
-	if (!Config.Cpu)
-		lightrec_plugin_sync_regs_to_pcsx();
-
-  LoadingBar_showBar(0.0f, SAVE_STATE_MSG);
-  pauseRemovalThread();
-  GPU_updateLace();
+    LoadingBar_showBar(0.0f, SAVE_STATE_MSG);
+    pauseRemovalThread();
 
 	gzwrite(f, (void*)PcsxHeader, 32);
+	gzwrite(f, (void *)&Config.HLE, sizeof(bool));
 
-	pMem = (unsigned char *) malloc(128*96*3);
+	pMem = (unsigned char *) malloc(128 * 96 * 3);
 	if (pMem == NULL) return -1;
 	GPU_getScreenPic(pMem);
-	gzwrite(f, pMem, 128*96*3);
+	gzwrite(f, pMem, 128 * 96 * 3);
 	free(pMem);
 
 	if (Config.HLE) {
 		psxBiosFreeze(1);
 	}
-  LoadingBar_showBar(0.10f, SAVE_STATE_MSG);
+    LoadingBar_showBar(0.10f, SAVE_STATE_MSG);
 	gzwrite(f, psxM, 0x00200000);
 	LoadingBar_showBar(0.40f, SAVE_STATE_MSG);
 	gzwrite(f, psxR, 0x00080000);
 	LoadingBar_showBar(0.60f, SAVE_STATE_MSG);
 	gzwrite(f, psxH, 0x00010000);
-	gzwrite(f, (void*)&psxRegs, sizeof(psxRegs));
-  LoadingBar_showBar(0.70f, SAVE_STATE_MSG);
+	// only partial save of psxRegisters to maintain savestate compat
+	gzwrite(f, (void*)&psxRegs, offsetof(psxRegisters, gteBusyCycle));
+    LoadingBar_showBar(0.70f, SAVE_STATE_MSG);
 	// gpu
 	gpufP = (GPUFreeze_t *) malloc(sizeof(GPUFreeze_t));
 	gpufP->ulFreezeVersion = 1;
 	GPU_freeze(1, gpufP);
 	gzwrite(f, gpufP, sizeof(GPUFreeze_t));
 	free(gpufP);
-	// gpu VRAM save (save directly to save memory)
-	gzwrite(f, &psxVub[0], 1024*iGPUHeight*2);
-  LoadingBar_showBar(0.80f, SAVE_STATE_MSG);
+	// When using the lightrec core at that time, the memory of WiiStation was already less than 2MB
+    // so the VRAM data was directly saved to file
+	gzwrite(f, &psxVub[0], 1024 * iGPUHeight * 2);
+    LoadingBar_showBar(0.80f, SAVE_STATE_MSG);
 	// spu
 	spufP = (SPUFreeze_t *) malloc(16);
 	SPU_freeze(2, spufP, psxRegs.cycle);
@@ -593,9 +646,7 @@ int SaveState() {
 	SPU_freeze(1, spufP, psxRegs.cycle);
 	gzwrite(f, spufP, Size);
 	free(spufP);
-  // spu spuMem save (save directly to save memory)
-  //gzwrite(f, spu.spuMemC, 0x80000);
-  LoadingBar_showBar(0.90f, SAVE_STATE_MSG);
+    LoadingBar_showBar(0.90f, SAVE_STATE_MSG);
 
 	sioFreeze(f, 1);
 	cdrFreeze(f, 1);
@@ -604,17 +655,17 @@ int SaveState() {
 	mdecFreeze(f, 1);
 	//new_dyna_freeze(f, 1);
 
-  LoadingBar_showBar(0.99f, SAVE_STATE_MSG);
+    LoadingBar_showBar(0.99f, SAVE_STATE_MSG);
 	gzclose(f);
 
-	new_dyna_after_save();
-
 	continueRemovalThread();
-  LoadingBar_showBar(1.0f, SAVE_STATE_MSG);
+    LoadingBar_showBar(1.0f, SAVE_STATE_MSG);
 	return 1; //ok
 }
 
 int LoadState() {
+    struct misc_save_data *misc = (void *)(psxH + 0xf000);
+	u32 biosBranchCheckOld = psxRegs.biosBranchCheck;
 	gzFile f;
 	GPUFreeze_t *gpufP;
 	SPUFreeze_t *spufP;
@@ -622,44 +673,59 @@ int LoadState() {
 	char header[32];
 	char *filename;
 
-  /* fix the filename to %s.st%u format */
+    /* fix the filename to %s.st%u format */
 	filename = malloc(1024);
-#ifdef HW_RVL
-  sprintf(filename, "%s%s%s.st%u",(saveStateDevice==SAVESTATEDEVICE_USB)?"usb:":"sd:",
+    #ifdef HW_RVL
+        sprintf(filename, "%s%s%s.st%u",(saveStateDevice==SAVESTATEDEVICE_USB)?"usb:":"sd:",
                            statespath, CdromId, savestates_slot);
-#else
-  sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
-#endif
+    #else
+        sprintf(filename, "sd:%s%s.st%u", statespath, CdromId, savestates_slot);
+    #endif
 
 	f = gzopen(filename, "rb");
-  free(filename);
+    free(filename);
 
-  if(!f) {
-  	return 0;
+    if (!f) {
+  	    return 0;
 	}
 
 	pauseRemovalThread();
 	LoadingBar_showBar(0.0f, LOAD_STATE_MSG);
-	//SysReset();
+	gzread(f, header, sizeof(header));
+	gzread(f, (void *)&Config.HLE, sizeof(bool));
+    LoadingBar_showBar(0.10f, LOAD_STATE_MSG);
 
-	psxCpu->Reset();
-  LoadingBar_showBar(0.10f, LOAD_STATE_MSG);
-	gzread(f, header, 32);
 
-	if (strncmp("STv3 PCSX", header, 9)) { gzclose(f); return -1; }
+	if (strncmp("STv4 PCSX", header, 9)) { gzclose(f); return -1; }
 
-	gzseek(f, 128*96*3, SEEK_CUR);
+	if (Config.HLE)
+		psxBiosInit();
+
+	gzseek(f, 128 * 96 * 3, SEEK_CUR);
 
 	gzread(f, psxM, 0x00200000);
 	LoadingBar_showBar(0.40f, LOAD_STATE_MSG);
 	gzread(f, psxR, 0x00080000);
 	LoadingBar_showBar(0.60f, LOAD_STATE_MSG);
 	gzread(f, psxH, 0x00010000);
-	gzread(f, (void*)&psxRegs, sizeof(psxRegs));
-  LoadingBar_showBar(0.70f, LOAD_STATE_MSG);
+	gzread(f, (void*)&psxRegs, offsetof(psxRegisters, gteBusyCycle));
+	psxRegs.gteBusyCycle = psxRegs.cycle;
+	psxRegs.biosBranchCheck = ~0;
+	psxRegs.gpuIdleAfter = psxRegs.cycle - 1;
+	HW_GPU_STATUS &= SWAP32(~PSXGPU_nBUSY);
+	if (misc->magic == MISC_MAGIC) {
+		psxRegs.gteBusyCycle = misc->gteBusyCycle;
+		psxRegs.muldivBusyCycle = misc->muldivBusyCycle;
+		psxRegs.biuReg = misc->biuReg;
+		psxRegs.biosBranchCheck = misc->biosBranchCheck;
+		psxRegs.gpuIdleAfter = misc->gpuIdleAfter;
+		HW_GPU_STATUS = misc->gpuSr;
+		frame_counter = misc->frame_counter;
+		//CdromFrontendId = misc->CdromFrontendId;
+	}
+    LoadingBar_showBar(0.70f, LOAD_STATE_MSG);
 
-	if (!Config.Cpu)
-		lightrec_plugin_sync_regs_from_pcsx();
+	psxCpu->Notify(R3000ACPU_NOTIFY_AFTER_LOAD, NULL);
 
 	if (Config.HLE)
 		psxBiosFreeze(0);
@@ -669,10 +735,9 @@ int LoadState() {
 	gzread(f, gpufP, sizeof(GPUFreeze_t));
 	GPU_freeze(0, gpufP);
 	free(gpufP);
-	if (HW_GPU_STATUS == 0)
-		HW_GPU_STATUS = SWAP32(GPU_readStatus());
 	// gpu VRAM load (load directly to save memory)
-	gzread(f, &psxVub[0], 1024*iGPUHeight*2);
+	gzread(f, &psxVub[0], 1024 * iGPUHeight * 2);
+	gpuSyncPluginSR();
 	LoadingBar_showBar(0.80f, LOAD_STATE_MSG);
 
 	// spu
@@ -681,9 +746,7 @@ int LoadState() {
 	gzread(f, spufP, Size);
 	SPU_freeze(0, spufP, psxRegs.cycle);
 	free(spufP);
-  // spu spuMem save (save directly to save memory)
-  //gzread(f, spu.spuMemC, 0x80000);
-  LoadingBar_showBar(0.99f, LOAD_STATE_MSG);
+    LoadingBar_showBar(0.99f, LOAD_STATE_MSG);
 
 	sioFreeze(f, 0);
 	cdrFreeze(f, 0);
@@ -693,8 +756,13 @@ int LoadState() {
 	//new_dyna_freeze(f, 0);
 
 	gzclose(f);
-  continueRemovalThread();
-  LoadingBar_showBar(1.0f, LOAD_STATE_MSG);
+    continueRemovalThread();
+
+	events_restore();
+	if (Config.HLE)
+		psxBiosCheckExe(biosBranchCheckOld, 0x60, 1);
+
+    LoadingBar_showBar(1.0f, LOAD_STATE_MSG);
 
 	return 1;
 }
@@ -712,7 +780,7 @@ int CheckState(char *file) {
 
 	gzclose(f);
 
-	if (strncmp("STv3 PCSX", header, 9)) return -1;
+	if (strncmp("STv4 PCSX", header, 9)) return -1;
 
 	return 0;
 }
@@ -769,6 +837,7 @@ int RecvPcsxInfo() {
 			SysClose(); return -1;
 		}
 		psxCpu->Reset();
+		psxCpu->Notify(R3000ACPU_NOTIFY_AFTER_LOAD, NULL);
 	}
 
 //	SysPrintf("Recv OK\n");

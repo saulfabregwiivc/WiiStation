@@ -23,8 +23,8 @@
 #include "../Gamecube/DEBUG.h"
 #include "../psxcommon.h"
 
-//#define BUFFER_SIZE        22050
-#define BUFFER_SIZE        12000
+#define BUFFER_SIZE        22050
+//#define BUFFER_SIZE        12000
 
 short            *pSndBuffer = NULL;
 volatile int    iReadPos = 0, iWritePos = 0;
@@ -62,8 +62,9 @@ static void SOUND_FillAudio(void *unused, Uint8 *stream, int len) {
             sposTmp -= 0x10000L;
         }
 
-        *p++ = lastSampleL;
+        // Because it is in BIG_ENDIAN format, it is necessary to swap the left and right audio channels.
         *p++ = lastSampleR;
+        *p++ = lastSampleL;
         sposTmp += SINC;
         --len;
     }

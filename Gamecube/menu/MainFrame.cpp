@@ -236,7 +236,7 @@ void go(void);
 
 //void control_info_init();
 
-extern bool backFromMenu;
+extern int backFromMenu;
 extern char menuActive;
 extern char autoSave;
 extern "C" char mcd1Written;
@@ -244,6 +244,7 @@ extern "C" char mcd2Written;
 extern "C" unsigned int usleep(unsigned int us);
 
 extern "C" void switchToTVMode(short dWidth, short dHeight, bool retMenu);
+extern "C" void GPUsetframelimit(unsigned long option);
 
 void Func_PlayGame()
 {
@@ -297,19 +298,9 @@ void Func_PlayGame()
 #endif
 	if (originalMode)
 		backFromMenu = 1;
-#ifdef SHOW_DEBUG
-	try {
-#endif // SHOW_DEBUG
+	frameLimit[0] = frameLimit[1];
+	//GPUsetframelimit(0);
 	go();
-#ifdef SHOW_DEBUG
-	}
-	catch (std::exception exp)
-	{
-	    sprintf(txtbuffer, "exception %s\n", exp.what());
-	    menu::MessageBox::getInstance().fadeMessage(txtbuffer);
-        writeLogFile(txtbuffer);
-	}
-#endif // SHOW_DEBUG
 
 #ifdef DEBUGON
 	_break();

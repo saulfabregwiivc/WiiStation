@@ -52,7 +52,7 @@ extern int stop;
 //extern char controllerType = 0; // 0 = standard, 1 = analog (analog fails on old games)
 long  PadFlags = 0;
 
-virtualControllers_t virtualControllers[2];
+virtualControllers_t virtualControllers[10];
 
 controller_t* controller_ts[num_controller_t] =
 #if defined(WII) && !defined(NO_BT)
@@ -110,7 +110,7 @@ void assign_controller(int wv, controller_t* type, int wp){
 	virtualControllers[wv].control = type;
 	virtualControllers[wv].inUse   = 1;
 	virtualControllers[wv].number  = wp;
-	virtualControllers[wv].config  = &type->config[wv];
+	virtualControllers[wv].config  = &type->config[wp];
 
 	type->assign(wp,wv);
 }
@@ -158,8 +158,21 @@ void auto_assign_controllers(void)
 
 	// 'Initialize' the unmapped virtual controllers
 	for(; i<2; ++i){
-		unassign_controller(i);
-		padType[i] = PADTYPE_NONE;
+		if(i == 0){
+#ifdef HW_RVL
+			assign_controller(i, &controller_Wiimote, i);
+			padType[i] = PADTYPE_WII;
+			padAssign[i] = i;
+#else
+			assign_controller(i, &controller_GC, i);
+			padType[i] = PADTYPE_GAMECUBE;
+			padAssign[i] = i;
+#endif
+		} else {
+			unassign_controller(i);
+			padType[i] = PADTYPE_NONE;
+			padAssign[i] = i;
+		}
 	}
 }
 
@@ -211,6 +224,9 @@ int load_configurations(FILE* f, controller_t* controller){
 			getPointer(controller->menu_combos, controller->num_menu_combos);
 		fread(&controller->config_slot[i].invertedYL, 4, 1, f);
 		fread(&controller->config_slot[i].invertedYR, 4, 1, f);
+		fread(&controller->config_slot[i].sensitivity, 4, 1, f);
+		controller->config_slot[i].fastf =
+			getPointer(controller->menu_combos, controller->num_menu_combos);
 	}
 
 	if (loadButtonSlot != LOADBUTTON_DEFAULT) {
@@ -257,6 +273,8 @@ void save_configurations(FILE* f, controller_t* controller){
 		fwrite(&controller->config_slot[i].exit->index, 4, 1, f);
 		fwrite(&controller->config_slot[i].invertedYL, 4, 1, f);
 		fwrite(&controller->config_slot[i].invertedYR, 4, 1, f);
+		fwrite(&controller->config_slot[i].sensitivity, 4, 1, f);
+		fwrite(&controller->config_slot[i].fastf->index, 4, 1, f);
 	}
 }
 

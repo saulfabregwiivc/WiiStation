@@ -28,6 +28,7 @@
 #include "../libgui/FocusManager.h"
 #include "../libgui/CursorManager.h"
 #include "../libgui/MessageBox.h"
+#include "../libgui/gui2/gettext.h"
 #include "../wiiSXconfig.h"
 #include "../../psxcommon.h"
 #include "../vm/vm.h"
@@ -63,6 +64,7 @@ void Func_ExecuteBios();
 void Func_SelectLanguage();
 void Func_SaveSettingsSD();
 void Func_SaveSettingsUSB();
+void Func_SaveSettingsSeparately();
 
 void Func_ShowFpsOn();
 void Func_ShowFpsOff();
@@ -110,6 +112,9 @@ void Func_AutoSaveYes();
 void Func_AutoSaveNo();
 void Func_SaveStateSD();
 void Func_SaveStateUSB();
+void Func_Memcard1();
+void Func_Memcard2();
+
 
 void Func_FastloadYes();
 void Func_FastloadNo();
@@ -131,13 +136,15 @@ void CheckCdrom();
 void LoadCdrom();
 void pauseAudio(void);  void pauseInput(void);
 void resumeAudio(void); void resumeInput(void);
+void IplFont_loadFontFile(FILE* fontFile);
+FILE* IplFont_getFontFile(char* sdUsb);
 }
 
-#define NUM_FRAME_BUTTONS 60
+#define NUM_FRAME_BUTTONS 63
 #define NUM_TAB_BUTTONS 5
 #define FRAME_BUTTONS settingsFrameButtons
 #define FRAME_STRINGS settingsFrameStrings
-#define NUM_FRAME_TEXTBOXES 23
+#define NUM_FRAME_TEXTBOXES 24
 #define FRAME_TEXTBOXES settingsFrameTextBoxes
 
 /*
@@ -175,7 +182,7 @@ Auto Save Memcards: Yes; No
 Save States Device: SD; USB
 */
 
-static char FRAME_STRINGS[71][24] =
+static char FRAME_STRINGS[78][24] =
 	{ "General",
 	  "Video",
 	  "Input",
@@ -245,7 +252,7 @@ static char FRAME_STRINGS[71][24] =
       "Es", // SPANISH
       "Pte", // PORTUGUESE
       "It", // ITALIAN
-      // Strings for display Fast Load (starting at FRAME_STRINGS[63]) ..was[63]
+      // Strings for display Fast Load (starting at FRAME_STRINGS[63]) ..was[77]
       "Fast Load",
 	  "240p",
 	  "Bilinear",
@@ -253,9 +260,31 @@ static char FRAME_STRINGS[71][24] =
 	  "Interlaced ",
 	  "Deflicker ",
 	  "Lightrec",
-	  "GunCon "
+	  "Lightgun ",
+	  "GunCon",
+	  "Justifier ",
+	  "Mouse",
+	  "Memcard 1",
+	  "Memcard 2",
+	  "Enable Memcard",
+	  "Separately"
       };
 
+static char LANG_STRINGS[13][24] =
+	{ "En", // English
+      "Chs", // Simplified Chinese
+      "Kr", // Korean
+      "Es", // SPANISH
+      "Pte", // PORTUGUESE
+      "It", // ITALIAN
+      "De", // GERMAN
+      "Cht", // TRAD_CHINESE
+      "Jp", // JAPANESE
+      "Fr", // FRENCH
+      "Br", // BRAZILIAN_PORTUGUESE
+      "Ca", // CATALAN
+      "Tu" // TURKISH
+      };
 
 struct ButtonInfo
 {
@@ -281,8 +310,8 @@ struct ButtonInfo
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[3],	395.0,	 30.0,	100.0,	56.0,	-1,	-1,	 2,	 4,	Func_TabAudio,			Func_ReturnFromSettingsFrame }, // Audio tab
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[4],	515.0,	 30.0,	100.0,	56.0,	-1,	-1,	 3,	 0,	Func_TabSaves,			Func_ReturnFromSettingsFrame }, // Saves tab
 	//Buttons for General Tab (starts at button[5])
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[10],	295.0,	100.0,	140.0,	56.0,	 0,	 7,	 58, 6,	Func_CpuInterp,			Func_ReturnFromSettingsFrame }, // CPU: Interp
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[69],	445.0,	100.0,	130.0,	56.0,	 0,	 9,	 5,	 58,Func_CpuLightrec,		Func_ReturnFromSettingsFrame }, // CPU: Lightrec
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[10],	215.0,	100.0,	140.0,	56.0,	 0,	 7,	 58, 6,	Func_CpuInterp,			Func_ReturnFromSettingsFrame }, // CPU: Interp
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[69],	365.0,	100.0,	130.0,	56.0,	 0,	 9,	 5,	 58,Func_CpuLightrec,		Func_ReturnFromSettingsFrame }, // CPU: Lightrec
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[12],	295.0,	170.0,	 70.0,	56.0,	 5,	11,	10,	 8,	Func_BiosSelectHLE,		Func_ReturnFromSettingsFrame }, // Bios: HLE
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[13],	375.0,	170.0,	 55.0,	56.0,	 5,	12,	 7,	 9,	Func_BiosSelectSD,		Func_ReturnFromSettingsFrame }, // Bios: SD
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[14],	440.0,	170.0,	 70.0,	56.0,	 6,	12,	 8,	10,	Func_BiosSelectUSB,		Func_ReturnFromSettingsFrame }, // Bios: USB
@@ -291,8 +320,9 @@ struct ButtonInfo
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[17],	380.0,	240.0,	 75.0,	56.0,	 8,	54,	11,	13,	Func_BootBiosNo,		Func_ReturnFromSettingsFrame }, // Boot Thru Bios: No
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[8],	465.0,	240.0,	180.0,	56.0,	9,	54,	12,	11,	Func_ExecuteBios,		Func_ReturnFromSettingsFrame }, // Execute Bios
 
-	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[13],	295.0,	380.0,	 55.0,	56.0,	54,	 0,	15,	15,	Func_SaveSettingsSD,	Func_ReturnFromSettingsFrame }, // Save Settings: SD
-	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[14],	360.0,	380.0,	 70.0,	56.0,	54,	 0,	14,	14,	Func_SaveSettingsUSB,	Func_ReturnFromSettingsFrame }, // Save Settings: USB
+	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[13],	235.0,	380.0,	 55.0,	56.0,	54,	 0,	62,	15,	Func_SaveSettingsSD,	Func_ReturnFromSettingsFrame }, // Save Settings: SD
+	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[14],	300.0,	380.0,	 70.0,	56.0,	54,	 0,	14,	62,	Func_SaveSettingsUSB,	Func_ReturnFromSettingsFrame }, // Save Settings: USB
+
 	//Buttons for Video Tab (starts at button[16])
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[24],	325.0,	100.0,	 75.0,	56.0,	 1,	18,	17,	17,	Func_ShowFpsOn,			Func_ReturnFromSettingsFrame }, // Show FPS: On
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[25],	420.0,	100.0,	 75.0,	56.0,	 1,	19,	16,	16,	Func_ShowFpsOff,		Func_ReturnFromSettingsFrame }, // Show FPS: Off
@@ -302,7 +332,7 @@ struct ButtonInfo
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[25],	420.0,	220.0,	 75.0,	56.0,	19,	23,	20,	20,	Func_FrameSkipOff,		Func_ReturnFromSettingsFrame }, // Frame Skip: Off
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[27],	200.0,	280.0,	 135.0,	56.0,	20,	25,	57,	23,	Func_ScreenMode,		Func_ReturnFromSettingsFrame }, // ScreenMode: 4:3/16:9/Force16:9
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[67],	355.0,	280.0,	 135.0,	56.0,	20,	26,	22,	57,	Func_Interlaced,		Func_ReturnFromSettingsFrame }, // Interlaced Mode
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[68],	440.0,	400.0,	110.0,	56.0,	27,	 1,	29,	28,	Func_DeflickerFilter,	Func_ReturnFromSettingsFrame }, // Filters: Deflicker Filter	
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[68],	440.0,	400.0,	110.0,	56.0,	27,	 1,	29,	28,	Func_DeflickerFilter,	Func_ReturnFromSettingsFrame }, // Filters: Deflicker Filter
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[30],	200.0,	340.0,	 75.0,	56.0,	22,	28,	27,	26,	Func_DitheringNone,		Func_ReturnFromSettingsFrame }, // Dithering: None
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[32],	295.0,	340.0,	110.0,	56.0,	23,	29,	25,	27,	Func_DitheringDefault,	Func_ReturnFromSettingsFrame }, // Dithering: Game Dependent
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[33],	425.0,	340.0,	110.0,	56.0,	23,	24,	26,	25,	Func_DitheringAlways,	Func_ReturnFromSettingsFrame }, // Dithering: Always
@@ -311,8 +341,8 @@ struct ButtonInfo
 	//Buttons for Input Tab (starts at button[30])
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[34],	 90.0,	100.0,	220.0,	56.0,	 2,	32,	31,	31,	Func_ConfigureInput,	Func_ReturnFromSettingsFrame }, // Configure Input Assignment
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[35],	325.0,	100.0,	235.0,	56.0,	 2,	32,	30,	30,	Func_ConfigureButtons,	Func_ReturnFromSettingsFrame }, // Configure Button Mappings
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[38],	265.0,	170.0,	115.0,	56.0,	30,	34,	58,	33,	Func_PsxTypeStandard,	Func_ReturnFromSettingsFrame }, // PSX Controller Type: Standard
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[39],	390.0,	170.0,	110.0,	56.0,	31,	35,	32,	58,	Func_PsxTypeAnalog,		Func_ReturnFromSettingsFrame }, // PSX Controller Type: Analog
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[38],	265.0,	170.0,	115.0,	56.0,	30,	34,	59,	33,	Func_PsxTypeStandard,	Func_ReturnFromSettingsFrame }, // PSX Controller Type: Standard
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[39],	390.0,	170.0,	110.0,	56.0,	31,	35,	32,	59,	Func_PsxTypeAnalog,		Func_ReturnFromSettingsFrame }, // PSX Controller Type: Analog
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[16],	285.0,	240.0,	 75.0,	56.0,	32,	36,	35,	35,	Func_DisableRumbleYes,	Func_ReturnFromSettingsFrame }, // Disable Rumble: Yes
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[17],	380.0,	240.0,	 75.0,	56.0,	33,	37,	34,	34,	Func_DisableRumbleNo,	Func_ReturnFromSettingsFrame }, // Disable Rumble: No
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[13],	285.0,	310.0,	 55.0,	56.0,	34,	38,	37,	37,	Func_SaveButtonsSD,		Func_ReturnFromSettingsFrame }, // Save Button Mappings: SD
@@ -333,15 +363,19 @@ struct ButtonInfo
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[55],	540.0,	100.0,	 90.0,	56.0,	 4,	51,	48,	46,	Func_MemcardSaveCardB,	Func_ReturnFromSettingsFrame }, // Memcard Save: Card B
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[16],	295.0,	170.0,	 75.0,	56.0,	46,	52,	51,	51,	Func_AutoSaveYes,		Func_ReturnFromSettingsFrame }, // Auto Save Memcards: Yes
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[17],	380.0,	170.0,	 75.0,	56.0,	47,	53,	50,	50,	Func_AutoSaveNo,		Func_ReturnFromSettingsFrame }, // Auto Save Memcards: No
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[13],	295.0,	240.0,	 55.0,	56.0,	50,	 4,	53,	53,	Func_SaveStateSD,		Func_ReturnFromSettingsFrame }, // Save State: SD
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[14],	360.0,	240.0,	 70.0,	56.0,	51,	 4,	52,	52,	Func_SaveStateUSB,		Func_ReturnFromSettingsFrame }, // Save State: USB
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[13],	295.0,	240.0,	 55.0,	56.0,	50,	60,	53,	53,	Func_SaveStateSD,		Func_ReturnFromSettingsFrame }, // Save State: SD
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[14],	360.0,	240.0,	 70.0,	56.0,	51,	60,	52,	52,	Func_SaveStateUSB,		Func_ReturnFromSettingsFrame }, // Save State: USB
 	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[57],	235.0,	310.0,	 90.0,	56.0,	 11,55,	56,	55,	Func_SelectLanguage,	Func_ReturnFromSettingsFrame }, // Select Language: En
     //Buttons for Saves Tab (starts at button[55]) ..was[58]
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[16],	490.0,	310.0,	 75.0,	56.0,	12,	15,	54,	56,	Func_FastloadYes,		Func_ReturnFromSettingsFrame }, // Fast load: Yes
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[17],	570.0,	310.0,	 75.0,	56.0,	13,	15,	55,	54,	Func_FastloadNo,		Func_ReturnFromSettingsFrame }, // Fast load: No
 	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[64],	510.0,	280.0,	 75.0,	56.0,	21,	27,	23,	22,	Func_Screen240p,		Func_ReturnFromSettingsFrame },  // ScreenMode: 240p
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[11],	585.0,	100.0,	130.0,	56.0,	 0,	 9,	 6,	 5,	Func_CpuDynarec,		Func_ReturnFromSettingsFrame },  // CPU: Dynarec
-	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[70],	510.0,	170.0,	115.0,	56.0,	31,	35,	33,	32,	Func_PsxTypeLightgun,	Func_ReturnFromSettingsFrame }  // PSX Controller Type: Lightgun
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[11],	505.0,	100.0,	130.0,	56.0,	 0,	 9,	 6,	 5,	Func_CpuDynarec,		Func_ReturnFromSettingsFrame },  // CPU: Dynarec
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[70],	510.0,	170.0,	115.0,	56.0,	31,	35,	33,	32,	Func_PsxTypeLightgun,	Func_ReturnFromSettingsFrame },  // PSX Controller Type: Lightgun
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[74],	295.0,	310.0,	155.0,	56.0,	52,	4,	61,	61,	Func_Memcard1,			Func_ReturnFromSettingsFrame },  // Memcard 1 toggle
+	{	NULL,	BTN_A_SEL,	FRAME_STRINGS[75],	460.0,	310.0,	155.0,	56.0,	53,	4,	60,	60,	Func_Memcard2,			Func_ReturnFromSettingsFrame },  // Memcard 2 toggle
+
+	{	NULL,	BTN_A_NRM,	FRAME_STRINGS[77],	385.0,	380.0,	 140.0,	56.0,	54,	 0,	15,	14,	Func_SaveSettingsSeparately,	Func_ReturnFromSettingsFrame }, // Save Settings: Separately
 };
 
 struct TextBoxInfo
@@ -355,10 +389,10 @@ struct TextBoxInfo
 } FRAME_TEXTBOXES[NUM_FRAME_TEXTBOXES] =
 { //	textBox	textBoxString		x		y		scale	centered
 	//TextBoxes for General Tab (starts at textBox[0])
-	{	NULL,	FRAME_STRINGS[5],	155.0,	128.0,	 1.0,	true }, // CPU Core: Pure Interp/Dynarec
+	{	NULL,	FRAME_STRINGS[5],	105.0,	128.0,	 1.0,	true }, // CPU Core: Pure Interp/Dynarec
 	{	NULL,	FRAME_STRINGS[6],	155.0,	198.0,	 1.0,	true }, // Bios: HLE/SD/USB/DVD
 	{	NULL,	FRAME_STRINGS[7],	155.0,	268.0,	 1.0,	true }, // Boot Thru Bios: Yes/No
-	{	NULL,	FRAME_STRINGS[9],	155.0,	408.0,	 1.0,	true }, // Save settings: SD/USB
+	{	NULL,	FRAME_STRINGS[9],	130.0,	408.0,	 1.0,	true }, // Save settings: SD/USB
 	//TextBoxes for Video Tab (starts at textBox[4])
 	{	NULL,	FRAME_STRINGS[18],	190.0,	128.0,	 1.0,	true }, // Show FPS: On/Off
 	{	NULL,	FRAME_STRINGS[19],	190.0,	188.0,	 1.0,	true }, // Limit FPS: Auto/Off
@@ -382,6 +416,7 @@ struct TextBoxInfo
 	{	NULL,	FRAME_STRINGS[53],	150.0,	268.0,	 1.0,	true }, // Save State Device: SD/USB
 	{	NULL,	FRAME_STRINGS[56],	130.0,	338.0,	 1.0,	true }, // Select language: En, Chs, ......
 	{	NULL,	FRAME_STRINGS[63],	405.0,	338.0,	 1.0,	true }, // Fast load
+	{	NULL,	FRAME_STRINGS[76],	150.0,	338.0,	 1.0,	true }, // Memcard enable
 };
 
 SettingsFrame::SettingsFrame()
@@ -489,8 +524,8 @@ void SettingsFrame::activateSubmenu(int submenu)
 				FRAME_BUTTONS[i].button->setActive(true);
 			}
 			FRAME_BUTTONS[54].button->setVisible(true);
-            FRAME_BUTTONS[54].button->setActive(canChangeFont == 1);
-            FRAME_BUTTONS[54].buttonString = FRAME_STRINGS[57 + lang];
+			FRAME_BUTTONS[54].button->setActive(true);
+            FRAME_BUTTONS[54].buttonString = LANG_STRINGS[lang];
 
             // Fast load
             FRAME_BUTTONS[55].button->setVisible(true);
@@ -503,6 +538,10 @@ void SettingsFrame::activateSubmenu(int submenu)
             // CPU: Dynarec
             FRAME_BUTTONS[58].button->setVisible(true);
             FRAME_BUTTONS[58].button->setActive(true);
+
+            // Save Settings: Separately
+            FRAME_BUTTONS[62].button->setVisible(true);
+            FRAME_BUTTONS[62].button->setActive(hasLoadedISO ? true : false);
 			break;
 		case SUBMENU_VIDEO:
 			setDefaultFocus(FRAME_BUTTONS[1].button);
@@ -518,7 +557,7 @@ void SettingsFrame::activateSubmenu(int submenu)
 			FRAME_BUTTONS[1].button->setSelected(true);
 			if (showFPSonScreen == FPS_SHOW)	FRAME_BUTTONS[16].button->setSelected(true);
 			else								FRAME_BUTTONS[17].button->setSelected(true);
-			if (frameLimit == FRAMELIMIT_AUTO)	FRAME_BUTTONS[18].button->setSelected(true);
+			if (frameLimit[1] == FRAMELIMIT_AUTO)	FRAME_BUTTONS[18].button->setSelected(true);
 			else								FRAME_BUTTONS[19].button->setSelected(true);
 			if (frameSkip == FRAMESKIP_ENABLE)	FRAME_BUTTONS[20].button->setSelected(true);
 			else								FRAME_BUTTONS[21].button->setSelected(true);
@@ -528,11 +567,11 @@ void SettingsFrame::activateSubmenu(int submenu)
 			if (interlacedMode == INTERLACED_ENABLE)FRAME_BUTTONS[23].button->setSelected(true);
 			if (deflickerFilter == DEFLICKER_ENABLE)FRAME_BUTTONS[24].button->setSelected(true);
 			FRAME_BUTTONS[22].buttonString = FRAME_STRINGS[27 + screenMode];
-			
+
 			FRAME_BUTTONS[57].button->setVisible(true);
 			FRAME_BUTTONS[57].button->setActive(true);
 
-			FRAME_BUTTONS[25+iUseDither].button->setSelected(true);
+			FRAME_BUTTONS[25+useDithering].button->setSelected(true);
 			for (int i = 16; i < 30; i++)
 			{
 				FRAME_BUTTONS[i].button->setVisible(true);
@@ -554,12 +593,15 @@ void SettingsFrame::activateSubmenu(int submenu)
 			FRAME_BUTTONS[2].button->setSelected(true);
 			if (controllerType == CONTROLLERTYPE_STANDARD)FRAME_BUTTONS[32].button->setSelected(true);
 			if (controllerType == CONTROLLERTYPE_ANALOG)FRAME_BUTTONS[33].button->setSelected(true);
-			if (lightGun == LIGHTGUN_ENABLE)FRAME_BUTTONS[59].button->setSelected(true);
+			if (lightGun != LIGHTGUN_DISABLE)FRAME_BUTTONS[59].button->setSelected(true);
+			else FRAME_BUTTONS[59].button->setSelected(false);
+			FRAME_BUTTONS[59].buttonString = FRAME_STRINGS[70 + lightGun];
+
 			FRAME_BUTTONS[34+rumbleEnabled].button->setSelected(true);
-			
+
 			FRAME_BUTTONS[59].button->setVisible(true);
 			FRAME_BUTTONS[59].button->setActive(true);
-			
+
 			for (int i = 30; i < 39; i++)
 			{
 				FRAME_BUTTONS[i].button->setVisible(true);
@@ -608,12 +650,19 @@ void SettingsFrame::activateSubmenu(int submenu)
 			}
 			for (int i = 18; i < 21; i++)
 				FRAME_TEXTBOXES[i].textBox->setVisible(true);
+			FRAME_TEXTBOXES[23].textBox->setVisible(true);
 			FRAME_BUTTONS[4].button->setSelected(true);
 			FRAME_BUTTONS[46+nativeSaveDevice].button->setSelected(true);
 			if (autoSave == AUTOSAVE_ENABLE)	FRAME_BUTTONS[50].button->setSelected(true);
 			else								FRAME_BUTTONS[51].button->setSelected(true);
 			if (saveStateDevice == SAVESTATEDEVICE_SD)	FRAME_BUTTONS[52].button->setSelected(true);
 			else										FRAME_BUTTONS[53].button->setSelected(true);
+			if (memCard[0] == MEMCARD_ENABLE)FRAME_BUTTONS[60].button->setSelected(true);
+			if (memCard[1] == MEMCARD_ENABLE)FRAME_BUTTONS[61].button->setSelected(true);
+			FRAME_BUTTONS[60].button->setVisible(true);
+			FRAME_BUTTONS[60].button->setActive(true);
+			FRAME_BUTTONS[61].button->setVisible(true);
+			FRAME_BUTTONS[61].button->setActive(true);
 			for (int i = 46; i < NUM_FRAME_BUTTONS; i++)
 			{
 			    if (i >= 54) {
@@ -998,22 +1047,30 @@ void Func_ExecuteBios()
 
 void Func_SelectLanguage()
 {
-//    ENGLISH = 0,
-//	SIMP_CHINESE,
-//	KOREAN,
-//	SPANISH,
-//	TRAD_CHINESE,
-//	JAPANESE,
-//	GERMAN,
-//	FRENCH,
-//	ITALIAN
-    lang++;
-    if (lang > ITALIAN)
-    {
-        lang = ENGLISH;
-    }
+    FILE* fontFile = NULL;
+    do
+	{
+		lang++;
+		if (lang > TURKISH)
+		{
+			lang = ENGLISH;
+		}
+		else
+		{
+			fontFile = IplFont_getFontFile("sd");
+			if (fontFile == NULL)
+			{
+				fontFile = IplFont_getFontFile("usb");
+			}
+		}
+	}
+	while (lang != ENGLISH && fontFile == NULL);
+
+    IplFont_loadFontFile(fontFile);
+    ChangeLanguage();
+
     FRAME_BUTTONS[54].button->setSelected(true);
-    FRAME_BUTTONS[54].buttonString = FRAME_STRINGS[57 + lang];
+    FRAME_BUTTONS[54].buttonString = LANG_STRINGS[lang];
 }
 
 extern void writeConfig(FILE* f);
@@ -1034,10 +1091,6 @@ void Func_SaveSettingsSD()
 			writeConfig(f);                                   //write out the config
 			fclose(f);
 			menu::MessageBox::getInstance().setMessage("Saved settings to SD");
-			if (oldLang != lang)
-            {
-                menu::MessageBox::getInstance().setMessage("Because the language has changed, please restart");
-			}
 			return;
 		}
 	}
@@ -1060,16 +1113,57 @@ void Func_SaveSettingsUSB()
 			writeConfig(f);                                   //write out the config
 			fclose(f);
 			menu::MessageBox::getInstance().setMessage("Saved settings to USB");
-			if (oldLang != lang)
-            {
-                menu::MessageBox::getInstance().setMessage("Because the language has changed, please restart");
-			}
 			return;
 		}
 	}
 	menu::MessageBox::getInstance().setMessage("Error saving settings to USB");
 }
 
+void Func_SaveSettingsSeparately()
+{
+    struct stat s;
+    char settingPathBuf[256];
+    fileBrowser_file* configFile_file;
+    extern char CdromId[10];
+	if (stat("usb:/wiisxrx/settings/", &s)) {
+		if (stat("sd:/wiisxrx/settings/", &s)) {
+			menu::MessageBox::getInstance().setMessage("Error opening directory sd:/wiisxrx/settings/");
+			return;
+		}
+		else
+		{
+			sprintf(settingPathBuf, "%s%s%s", "sd:/wiisxrx/settings/", CdromId, ".cfg");
+			configFile_file = &saveDir_libfat_Default;
+	        int (*configFile_init)(fileBrowser_file*) = fileBrowser_libfat_init;
+	        if(configFile_init(configFile_file)) {                //only if device initialized ok
+				FILE* f = fopen( settingPathBuf, "wb" );  //attempt to open file
+				if(f) {
+					writeConfig(f);                                   //write out the config
+					fclose(f);
+					menu::MessageBox::getInstance().setMessage("Saved settings to SD");
+					return;
+				}
+			}
+			menu::MessageBox::getInstance().setMessage("Error saving settings to SD");
+		}
+	}
+	else
+	{
+		sprintf(settingPathBuf, "%s%s%s", "usb:/wiisxrx/settings/", CdromId, ".cfg");
+		configFile_file = &saveDir_libfat_USB;
+	    int (*configFile_init)(fileBrowser_file*) = fileBrowser_libfat_init;
+	    if (configFile_init(configFile_file)) {                //only if device initialized ok
+			FILE* f = fopen( settingPathBuf, "wb" ); //attempt to open file
+			if(f) {
+				writeConfig(f);                                   //write out the config
+				fclose(f);
+				menu::MessageBox::getInstance().setMessage("Saved settings to USB");
+				return;
+			}
+		}
+		menu::MessageBox::getInstance().setMessage("Error saving settings to USB");
+	}
+}
 void Func_ShowFpsOn()
 {
 	for (int i = 16; i <= 17; i++)
@@ -1086,15 +1180,16 @@ void Func_ShowFpsOff()
 	showFPSonScreen = FPS_HIDE;
 }
 
-extern "C" void GPUsetframelimit(unsigned long option);
+//extern "C" void GPUsetframelimit(unsigned long option);
 
 void Func_FpsLimitAuto()
 {
 	for (int i = 18; i <= 19; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[18].button->setSelected(true);
-	frameLimit = FRAMELIMIT_AUTO;
-	GPUsetframelimit(0);
+	frameLimit[0] = FRAMELIMIT_AUTO;
+	frameLimit[1] = FRAMELIMIT_AUTO;
+	//GPUsetframelimit(0);
 }
 
 void Func_FpsLimitOff()
@@ -1102,8 +1197,9 @@ void Func_FpsLimitOff()
 	for (int i = 18; i <= 19; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[19].button->setSelected(true);
-	frameLimit = FRAMELIMIT_NONE;
-	GPUsetframelimit(0);
+	frameLimit[0] = FRAMELIMIT_NONE;
+	frameLimit[1] = FRAMELIMIT_NONE;
+	//GPUsetframelimit(0);
 }
 
 void Func_FrameSkipOn()
@@ -1112,7 +1208,7 @@ void Func_FrameSkipOn()
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[20].button->setSelected(true);
 	frameSkip = FRAMESKIP_ENABLE;
-	GPUsetframelimit(0);
+	//GPUsetframelimit(0);
 }
 
 void Func_FrameSkipOff()
@@ -1121,7 +1217,7 @@ void Func_FrameSkipOff()
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[21].button->setSelected(true);
 	frameSkip = FRAMESKIP_DISABLE;
-	GPUsetframelimit(0);
+	//GPUsetframelimit(0);
 }
 
 
@@ -1187,9 +1283,10 @@ void Func_DitheringNone()
 	for (int i = 25; i <= 27; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[25].button->setSelected(true);
-	iUseDither = USEDITHER_NONE;
-	useDithering = iUseDither;
-	GPUsetframelimit(0);
+	useDithering = USEDITHER_NONE;
+	// Setting variables directly in the GPU is not good......
+    iUseDither = useDithering;
+	//GPUsetframelimit(0);
 }
 
 void Func_DitheringDefault()
@@ -1197,9 +1294,10 @@ void Func_DitheringDefault()
 	for (int i = 25; i <= 27; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[26].button->setSelected(true);
-	iUseDither = USEDITHER_DEFAULT;
-	useDithering = iUseDither;
-	GPUsetframelimit(0);
+	useDithering = USEDITHER_DEFAULT;
+	// Setting variables directly in the GPU is not good......
+    iUseDither = useDithering;
+	//GPUsetframelimit(0);
 }
 
 void Func_DitheringAlways()
@@ -1207,9 +1305,10 @@ void Func_DitheringAlways()
 	for (int i = 25; i <= 27; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[27].button->setSelected(true);
-	iUseDither = USEDITHER_ALWAYS;
-	useDithering = iUseDither;
-	GPUsetframelimit(0);
+	useDithering = USEDITHER_ALWAYS;
+	// Setting variables directly in the GPU is not good......
+    iUseDither = useDithering;
+	//GPUsetframelimit(0);
 }
 
 void Func_BilinearFilter()
@@ -1272,16 +1371,14 @@ void Func_PsxTypeAnalog()
 
 void Func_PsxTypeLightgun()
 {
-	if(lightGun == LIGHTGUN_ENABLE)
-	{
+    lightGun++;
+	FRAME_BUTTONS[59].button->setSelected(true);
+    if (lightGun > LIGHTGUN_MOUSE)
+    {
+        lightGun = LIGHTGUN_DISABLE;
 		FRAME_BUTTONS[59].button->setSelected(false);
-		lightGun = LIGHTGUN_DISABLE;
-	}
-	else
-	{
-		FRAME_BUTTONS[59].button->setSelected(true);
-		lightGun = LIGHTGUN_ENABLE;
-	}
+    }
+    FRAME_BUTTONS[59].buttonString = FRAME_STRINGS[70 + lightGun];
 }
 
 void Func_DisableRumbleYes()
@@ -1299,6 +1396,36 @@ void Func_DisableRumbleNo()
 	FRAME_BUTTONS[35].button->setSelected(true);
 	rumbleEnabled = RUMBLE_ENABLE;
 }
+
+void Func_Memcard1()
+{
+	if(memCard[0] == MEMCARD_ENABLE)
+	{
+		FRAME_BUTTONS[60].button->setSelected(false);
+		memCard[0] = MEMCARD_DISABLE;
+	}
+	else
+	{
+		FRAME_BUTTONS[60].button->setSelected(true);
+		memCard[0] = MEMCARD_ENABLE;
+	}
+}
+
+void Func_Memcard2()
+{
+	if(memCard[1] == MEMCARD_ENABLE)
+	{
+		FRAME_BUTTONS[61].button->setSelected(false);
+		memCard[1] = MEMCARD_DISABLE;
+	}
+	else
+	{
+		FRAME_BUTTONS[61].button->setSelected(true);
+		memCard[1] = MEMCARD_ENABLE;
+	}
+}
+
+
 
 void Func_SaveButtonsSD()
 {
@@ -1450,18 +1577,20 @@ void Func_DisableXaNo()
 	Config.Xa = XA_ENABLE;
 }
 
+#ifdef SHOW_DEBUG
+extern bool canWriteLog;
+#endif // SHOW_DEBUG
 void Func_DisableCddaYes()
 {
 	for (int i = 43; i <= 44; i++)
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[43].button->setSelected(true);
 	Config.Cdda = CDDA_DISABLE;
-//	#ifdef SHOW_DEBUG
-//	canWriteLog = !canWriteLog;
-//	sprintf(txtbuffer,"Current Write Log Status %d", canWriteLog);
-//	menu::MessageBox::getInstance().setMessage(txtbuffer);
-//	DEBUG_print(txtbuffer, DBG_CORE2);
-//	#endif // SHOW_DEBUG
+	#ifdef SHOW_DEBUG
+	canWriteLog = !canWriteLog;
+	sprintf(txtbuffer,"Current Write Log Status %d", canWriteLog);
+	menu::MessageBox::getInstance().setMessage(txtbuffer);
+	#endif // SHOW_DEBUG
 }
 
 void Func_DisableCddaNo()
@@ -1470,12 +1599,11 @@ void Func_DisableCddaNo()
 		FRAME_BUTTONS[i].button->setSelected(false);
 	FRAME_BUTTONS[44].button->setSelected(true);
 	Config.Cdda = CDDA_ENABLE;
-//	#ifdef SHOW_DEBUG
-//	canWriteLog = !canWriteLog;
-//	sprintf(txtbuffer,"Current Write Log Status %d", canWriteLog);
-//	menu::MessageBox::getInstance().setMessage(txtbuffer);
-//	DEBUG_print(txtbuffer, DBG_CORE2);
-//	#endif // SHOW_DEBUG
+	#ifdef SHOW_DEBUG
+	canWriteLog = !canWriteLog;
+	sprintf(txtbuffer,"Current Write Log Status %d", canWriteLog);
+	menu::MessageBox::getInstance().setMessage(txtbuffer);
+	#endif // SHOW_DEBUG
 	//menu::MessageBox::getInstance().setMessage("CDDA audio is not implemented");
 }
 

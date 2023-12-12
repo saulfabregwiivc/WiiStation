@@ -29,8 +29,8 @@
 #define FONT_LO   (MCD2_HI)
 #define FONT_HI   (FONT_LO + FONT_SIZE)
 
-// We want 20MB for chinese font
-#define CN_FONT_SIZE (20*MB)
+// We want 20MB for max font
+#define CN_FONT_SIZE (19*MB)
 #define CN_FONT_LO   (FONT_HI)
 #define CN_FONT_HI   (CN_FONT_LO + CN_FONT_SIZE)
 

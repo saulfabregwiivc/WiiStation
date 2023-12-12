@@ -90,7 +90,9 @@ void DoBufferSwap(void)                                // SWAP BUFFERS
 	static int iOldDY=0;
 	long x = PSXDisplay.DisplayPosition.x;
 	long y = PSXDisplay.DisplayPosition.y;
-	short iDX = PreviousPSXDisplay.DisplayMode.x;
+	short iDX = PreviousPSXDisplay.Range.x1 & 0xFFF8;
+	if (iDX < PreviousPSXDisplay.Range.x1)
+		iDX += 8;
 	short iDY = PreviousPSXDisplay.DisplayMode.y;
 
 	if (menuActive) return;
@@ -444,7 +446,7 @@ void GX_Flip(short width, short height, u8 * buffer, int pitch, u8 fmt)
 	  GX_TexCoord2f32( 0.0, 1.0);
 	GX_End();
 	
-	if (lightGun == LIGHTGUN_ENABLE){	
+	if (lightGun){	
 	
 	GX_InvVtxCache();
 	GX_InvalidateTexAll();
@@ -459,22 +461,29 @@ void GX_Flip(short width, short height, u8 * buffer, int pitch, u8 fmt)
 	GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
 	GX_SetLineWidth(10, GX_TO_ZERO );
 	
-		for (i=0;i<2;i++){
+		for (i=0;i<4;i++){
 			if (controller_Wiimote.available[i] || controller_WiimoteNunchuk.available[i]){
 				wpad = WPAD_Data(0);
 				if (!wpad[i].ir.valid) continue;
 				cursorX = wpad[i].ir.x;
 				cursorY = wpad[i].ir.y; 
-				if (i){r=255; g=0; b=0;} else{r=0; g=255; b=0;}
+				switch (i){
+					case 0: r=0; g=255; b=0;break;
+					case 1: r=255; g=0; b=0;break;
+					case 2: r=0; g=0; b=255;break;
+					case 3: r=0; g=255; b=255;break;
+				}
 				
-				drawCircle(cursorX, cursorY, 20, 10, r, g, b);
 				drawLine(cursorX, cursorY-5, cursorX, cursorY+5, r, g, b);
 				drawLine(cursorX-5, cursorY, cursorX+5, cursorY, r, g, b);
 				
-				drawLine(cursorX+20, cursorY, cursorX+15, cursorY, r, g, b);
-				drawLine(cursorX-20, cursorY, cursorX-15, cursorY, r, g, b);
-				drawLine(cursorX, cursorY+20, cursorX, cursorY+15, r, g, b);
-				drawLine(cursorX, cursorY-20, cursorX, cursorY-15, r, g, b);
+				if (lightGun == LIGHTGUN_GUNCON || lightGun == LIGHTGUN_JUST){
+					drawCircle(cursorX, cursorY, 20, 10, r, g, b);
+					drawLine(cursorX+20, cursorY, cursorX+15, cursorY, r, g, b);
+					drawLine(cursorX-20, cursorY, cursorX-15, cursorY, r, g, b);
+					drawLine(cursorX, cursorY+20, cursorX, cursorY+15, r, g, b);
+					drawLine(cursorX, cursorY-20, cursorX, cursorY-15, r, g, b);
+				}
 			}
 		}
 	}

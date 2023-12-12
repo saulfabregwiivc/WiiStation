@@ -6,19 +6,33 @@ WiiStation (formely WiiSXRX_2022), is a Sony PlayStation 1 (PS1/PSX/PSone) emula
 
 ## The following changes have been made to the code based on WiiSXRX.
 
-* Incorporating the CDROM and CDRISO codes from PCSX-ReARMed, the compatibility of the system has been greatly improved.
+* Incorporating the latest CDROM and CDRISO codes from PCSX-ReARMed, the compatibility of the system has been greatly improved.
   Many games that could not be run or had problems before can be run now.
 
 * CDDA (Compact Disc Digital Audio) tracks & multi-tracks support.
 
-* Incorporating the timer codes from PCSX-ReARMed.
+* Incorporating the timer (system timings emulation) codes from PCSX-ReARMed.
 
-* Combined the DFSound module from PCSX-ReARMed and used the SDL library.
+* Combined the latest DFSound module from PCSX-ReARMed and used the SDL library.
   The sound quality of the system has been greatly improved.
 
-* Replacing the old PowerPC (PPC) dynarec with the new dynamic recompiler [Lightrec](https://github.com/pcercuei/lightrec) by pcercuei, the speed/performance of the emulation is greatly improved.
+* Adding the new, updated PSX dynamic recompiler [Lightrec](https://github.com/pcercuei/lightrec) by pcercuei, the speed/performance of the emulation is greatly improved. The original old (and fixed/improved) PPC dynarec is kept as an option in case compatibility or speed changes much.
 
 * 240p support!
+
+* Interlace mode support - renders the games to a resolution close to the real PSX hardware (480i mode), which gives full speed to 480i games!
+
+* Posibility of enabling/disabling bilinear, trap, and deflicker filters!
+
+* PS1 Lightguns support! Both Namco GunCon and Konami Justifier lightguns are supported and emulated with the Wiimotes! (Needs to be enabled in emulator settings and calibrate them by using the in-game calibration screen)
+
+* Experimental PS1 Mouse support via the Wiimote IR.
+
+* PS1 Multitap support! With options for enabling them on both Port 1 and Port 2, supports up to 8 players. (Needs to be enabled in emulator settings and controllers need to be set for use the Multitap adequately)
+
+* Support for BIN+CUE, ISO, IMG, and eboot PBP (a compressed format for PS1 games on PSP) formats.
+
+* CHD v1-v5 compressed format support with the [libchdr](https://github.com/rtissera/libchdr) library from [MAME](https://github.com/mamedev/mame).
 
 * Support for multiple languages.
   At first, I wanted to refer to Snes9x GX and support TTF font library.
@@ -33,10 +47,10 @@ WiiStation (formely WiiSXRX_2022), is a Sony PlayStation 1 (PS1/PSX/PSone) emula
 
   ※※※ Note: It reads a font file in a fixed location, so make sure that [sd:/wiisxrx/fonts/chs.dat] exists ※※※
 
-## Old changes (before Lightrec)
+## Changes on old PPC dynarec:
 
-* ̶M̶o̶d̶i̶f̶i̶c̶a̶t̶i̶o̶n̶ ̶o̶f̶ ̶s̶o̶m̶e̶ ̶d̶y̶n̶a̶m̶i̶c̶ ̶c̶o̶m̶p̶i̶l̶a̶t̶i̶o̶n̶ ̶i̶n̶s̶t̶r̶u̶c̶t̶i̶o̶n̶s̶,̶ ̶s̶u̶c̶h̶ ̶a̶s̶ ̶S̶L̶L̶V̶,̶ ̶S̶R̶L̶V̶,̶ ̶S̶R̶A̶V̶,̶ ̶F̶i̶n̶a̶l̶ ̶F̶a̶n̶t̶a̶s̶y̶ ̶9̶ ̶a̶n̶d̶ ̶B̶i̶o̶h̶a̶z̶a̶r̶d̶ ̶3̶ ̶(̶R̶e̶s̶i̶d̶e̶n̶t̶ ̶E̶v̶i̶l̶ ̶3̶)̶ ̶c̶a̶n̶ ̶b̶e̶ ̶r̶u̶n̶.̶
-̶ ̶ ̶(̶P̶a̶r̶t̶ ̶o̶f̶ ̶t̶h̶e̶ ̶d̶i̶v̶i̶s̶i̶o̶n̶ ̶i̶n̶s̶t̶r̶u̶c̶t̶i̶o̶n̶ ̶u̶s̶e̶s̶ ̶a̶ ̶s̶t̶a̶t̶i̶c̶ ̶c̶o̶m̶p̶i̶l̶a̶t̶i̶o̶n̶ ̶i̶n̶s̶t̶r̶u̶c̶t̶i̶o̶n̶)̶
+* Modification of some dynamic compilation instructions on the old PPC dynarec, such as SLLV, SRLV, SRAV, Final Fantasy 9 and Biohazard 3 (Resident Evil 3) can be run.
+(Part of the division instruction uses a static compilation instruction)
 
 ## Goals
 
@@ -68,7 +82,7 @@ Any help is appreciated.
 
 WiiStation (formely WiiSXRX_2022) - developed by xjsxjs197 - https://github.com/xjsxjs197/WiiSXRX_2022
 
-240p support by Jokippo - http://github.com/Jokippo
+240p/Lightgun/Mouse/Multitap support, some fixes and additional improvements by Jokippo - http://github.com/Jokippo
 
 WiiStation icon - made by Dakangel (high quality logo made by saulfabreg)
 
@@ -80,10 +94,12 @@ PCSX-Revolution - developed by Firnis - https://code.google.com/archive/p/pcsx-r
 
 WiiSX - developed by emu_kidid, tehpola, sepp256 - https://github.com/emukidid/pcsxgc ; https://code.google.com/archive/p/pcsxgc/downloads
 
-PCSX-ReARMed - developed by notaz - https://github.com/notaz/pcsx_rearmed
+PCSX-ReARMed - developed by notaz - https://github.com/notaz/pcsx_rearmed ; some other changes by Libretro - https://github.com/libretro/pcsx_rearmed
 
 libOGC2 - developed by Extrems - https://github.com/extremscorner/libogc2
 
 Lightrec - developed by pcercuei - https://github.com/pcercuei/lightrec
+
+libchdr - developed by MAME Team and rtissera - https://github.com/rtissera/libchdr
 
 Thanks for everyone's attention and enthusiasm, which gives me the motivation to continue this project.

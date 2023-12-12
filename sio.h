@@ -14,12 +14,16 @@
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   51 Franklin Street, Fifth Floor, Boston, MA 02111-1307 USA.           *
  ***************************************************************************/
 
 
 #ifndef _SIO_H_
 #define _SIO_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include "psxcommon.h"
 #include "r3000a.h"
@@ -55,6 +59,7 @@ extern unsigned short StatReg;
 extern unsigned short ModeReg;
 extern unsigned short CtrlReg;
 extern unsigned short BaudReg;
+extern char McdDisable[2];
 
 #ifdef HW_RVL
 #include "Gamecube/MEM2.h"
@@ -72,19 +77,19 @@ extern int sioFreeze(gzFile f, int Mode);
 
 extern int LoadMcd(int mcd, fileBrowser_file *savepath);
 extern int LoadMcds(fileBrowser_file *mcd1, fileBrowser_file *mcd2);
-// add xjsxjs197 start
+
 extern int SaveMcdByNum(int mcd);
-// add xjsxjs197 end
+
 extern int SaveMcd(int mcd, fileBrowser_file *savepath);
 extern int SaveMcds(fileBrowser_file *mcd1, fileBrowser_file *mcd2);
 extern bool CreateMcd(int slot, fileBrowser_file *mcd);
 extern void ConvertMcd(char *mcd, char *data);
 
 typedef struct {
-	char Title[48];
-	short sTitle[48];
-	char ID[14];
-	char Name[16];
+	char Title[48 + 1]; // Title in ASCII
+	char sTitle[48 * 2 + 1]; // Title in Shift-JIS
+	char ID[12 + 1];
+	char Name[16 + 1];
 	int IconCount;
 	short Icon[16*16*3];
 	unsigned char Flags;
@@ -92,4 +97,7 @@ typedef struct {
 
 extern void GetMcdBlockInfo(int mcd, int block, McdBlock *info);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

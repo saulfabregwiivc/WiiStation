@@ -83,6 +83,8 @@ typedef struct {
 	button_tp START, SELECT;
 	button_tp analogL, analogR, exit;
 	int invertedYL, invertedYR;
+	float sensitivity;
+	button_tp fastf;
 } controller_config_t;
 
 typedef struct {
@@ -134,7 +136,7 @@ typedef struct _virtualControllers_t {
 	controller_config_t* config; // This is no longer needed...
 } virtualControllers_t;
 
-extern virtualControllers_t virtualControllers[2];
+extern virtualControllers_t virtualControllers[10];
 
 // List of all the defined controller_t's
 #if defined(WII) && !defined(NO_BT)

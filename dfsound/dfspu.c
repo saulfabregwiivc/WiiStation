@@ -197,24 +197,46 @@ static void InterpolateDown(int *SB, int sinc)
 
 #include "xa.c"
 
-static void do_irq(void)
+static void do_irq(int cycles_after)
 {
- //if(!(spu.spuStat & STAT_IRQ))
+ if (spu.spuStat & STAT_IRQ)
+  log_unhandled("spu: missed irq?\n");
+ else
  {
   spu.spuStat |= STAT_IRQ;                             // asserted status?
-  if(spu.irqCallback) spu.irqCallback();
+  if (spu.irqCallback)
+   spu.irqCallback(cycles_after);
  }
 }
 
 static int check_irq(int ch, unsigned char *pos)
 {
- if((spu.spuCtrl & CTRL_IRQ) && pos == spu.pSpuIrq)
+ if((spu.spuCtrl & (CTRL_ON|CTRL_IRQ)) == (CTRL_ON|CTRL_IRQ) && pos == spu.pSpuIrq)
  {
-  //printf("ch%d irq %04x\n", ch, pos - spu.spuMemC);
-  do_irq();
+  //printf("ch%d irq %04zx\n", ch, pos - spu.spuMemC);
+  do_irq(0);
   return 1;
  }
  return 0;
+}
+
+void check_irq_io(unsigned int addr)
+{
+ unsigned int irq_addr = regAreaGet(H_SPUirqAddr) << 3;
+ //addr &= ~7; // ?
+ if((spu.spuCtrl & (CTRL_ON|CTRL_IRQ)) == (CTRL_ON|CTRL_IRQ) && addr == irq_addr)
+ {
+  //printf("io   irq %04x\n", irq_addr);
+  do_irq(0);
+ }
+}
+
+void do_irq_io(int cycles_after)
+{
+ if ((spu.spuCtrl & (CTRL_ON|CTRL_IRQ)) == (CTRL_ON|CTRL_IRQ))
+ {
+  do_irq(cycles_after);
+ }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -271,10 +293,8 @@ INLINE int FModChangeFrequency(int *SB, int pitch, int ns)
  if(NP<0x1)    NP=0x1;
 
  sinc=NP<<4;                                           // calc frequency
- //sinc = (PS_SPU_FREQ * NP / WII_SPU_FREQ) << 4;          // calc frequency
- //if(spu_config.iUseInterpolation==1)                   // freq change in simple interpolation mode
-  SB[32]=1;
  iFMod[ns]=0;
+ SB[32]=1;                                             // reset interpolation
 
  return sinc;
 }
@@ -396,14 +416,16 @@ static void decode_block_data(int *dest, const unsigned char *src, int predict_n
 
   fa = s >> shift_factor;
   fa += ((s_1 * f[predict_nr][0])>>6) + ((s_2 * f[predict_nr][1])>>6);
-  s_2=s_1;s_1=fa;
+  ssat32_to_16(fa);
+  s_2 = s_1; s_1 = fa;
 
   dest[nSample++] = fa;
 
   s = (int)(signed short)((d & 0xf0) << 8);
   fa = s >> shift_factor;
   fa += ((s_1 * f[predict_nr][0])>>6) + ((s_2 * f[predict_nr][1])>>6);
-  s_2=s_1;s_1=fa;
+  ssat32_to_16(fa);
+  s_2 = s_1; s_1 = fa;
 
   dest[nSample++] = fa;
  }
@@ -437,7 +459,7 @@ static int decode_block(void *unused, int ch, int *SB)
  decode_block_data(SB, start + 2, predict_nr, shift_factor);
 
  flags = start[1];
- if (flags & 4 && (!s_chan->bIgnoreLoop))
+ if (flags & 4 && !s_chan->bIgnoreLoop)
   s_chan->pLoop = start;                   // loop adress
 
  start += 16;
@@ -489,6 +511,8 @@ static void scan_for_irq(int ch, unsigned int *upd_samples)
  pos = s_chan->spos;
  sinc = s_chan->sinc;
  end = pos + *upd_samples * sinc;
+ if (s_chan->prevflags & 1)                 // 1: stop/loop
+  block = s_chan->pLoop;
 
  pos += (28 - s_chan->iSBPos) << 16;
  while (pos < end)
@@ -771,6 +795,9 @@ static void do_channels(int ns_to)
    s_chan = &spu.s_chan[ch];
    SB = spu.SB + ch * SB_SIZE;
    sinc = s_chan->sinc;
+   if (spu.s_chan[ch].bNewPitch)
+    SB[32] = 1;                                    // reset interpolation
+   spu.s_chan[ch].bNewPitch = 0;
 
    if (s_chan->bNoise)
     d = do_samples_noise(ch, ns_to);
@@ -802,11 +829,15 @@ static void do_channels(int ns_to)
 
    if (s_chan->bFMod == 2)                         // fmod freq channel
     memcpy(iFMod, &ChanBuf, ns_to * sizeof(iFMod[0]));
-   if (s_chan->bRVBActive && do_rvb)
+   if (!(spu.spuCtrl & CTRL_MUTE))
+    ;
+   else if (s_chan->bRVBActive && do_rvb)
     mix_chan_rvb(spu.SSumLR, ns_to, s_chan->iLeftVolume, s_chan->iRightVolume, RVB);
    else
     mix_chan(spu.SSumLR, ns_to, s_chan->iLeftVolume, s_chan->iRightVolume);
   }
+
+  MixCD(spu.SSumLR, RVB, ns_to, spu.decode_pos);
 
   if (spu.rvb->StartAddr) {
    if (do_rvb)
@@ -827,7 +858,7 @@ static void do_samples_finish(int *SSumLR, int ns_to,
 // here is the main job handler...
 ////////////////////////////////////////////////////////////////////////
 
-int do_samples(unsigned int cycles_to, int do_direct)
+void do_samples(unsigned int cycles_to, int do_direct)
 {
  unsigned int silentch;
  int cycle_diff;
@@ -883,9 +914,13 @@ int do_samples(unsigned int cycles_to, int do_direct)
     if (0 < left && left <= ns_to)
      {
       //xprintf("decoder irq %x\n", spu.decode_pos);
-      do_irq();
+      do_irq(0);
      }
    }
+  if (!spu.cycles_dma_end || (int)(spu.cycles_dma_end - cycles_to) < 0) {
+   spu.cycles_dma_end = 0;
+   check_irq_io(spu.spuAddr);
+  }
 
   if (unlikely(spu.rvb->dirty))
    REVERBPrep();
@@ -929,12 +964,10 @@ static void do_samples_finish(int *SSumLR, int ns_to,
     spu.decode_dirty_ch &= ~(1<<3);
    }
 
-  MixXA(SSumLR, ns_to, decode_pos);
-
   vol_l = vol_l * spu_config.iVolume >> 10;
   vol_r = vol_r * spu_config.iVolume >> 10;
 
-  if (!(spu.spuCtrl & 0x4000) || !(vol_l | vol_r))
+  if (!(vol_l | vol_r))
    {
     // muted? (rare)
     memset(spu.pS, 0, ns_to * 2 * sizeof(spu.pS[0]));
@@ -1002,14 +1035,14 @@ void schedule_next_irq(void)
 
 void CALLBACK DF_SPUasync(unsigned int cycle, unsigned int flags, unsigned int psxType)
 {
-    int lastBytes;
-    int nsTo = do_samples(cycle, spu_config.iUseFixedUpdates);
+  do_samples(cycle, 0);
 
   if (spu.spuCtrl & CTRL_IRQ)
     schedule_next_irq();
 
  if (flags & 1) {
-  lastBytes = out_current->feed(spu.pSpuBuffer, (unsigned char *)spu.pS - spu.pSpuBuffer);
+  //lastBytes = out_current->feed(spu.pSpuBuffer, (unsigned char *)spu.pS - spu.pSpuBuffer);
+  out_current->feed(spu.pSpuBuffer, (unsigned char *)spu.pS - spu.pSpuBuffer);
   spu.pS = (short *)spu.pSpuBuffer;
 
   //if (spu_config.iTempo) {
@@ -1040,21 +1073,42 @@ void DF_SPUupdate(void)
 
 // XA AUDIO
 
-void DF_SPUplayADPCMchannel(xa_decode_t *xap)
+void DF_SPUplayADPCMchannel(xa_decode_t *xap, unsigned int cycle, int is_start)
 {
  if(!xap)       return;
- if(!xap->freq) return;                                // no xa freq ? bye
+ if(!xap->freq) return;                // no xa freq ? bye
 
- FeedXA(xap);                                          // call main XA feeder
+ if (is_start)
+  spu.XAPlay = spu.XAFeed = spu.XAStart;
+ if (spu.XAPlay == spu.XAFeed)
+  do_samples(cycle, 1);                // catch up to prevent source underflows later
+
+ FeedXA(xap);                          // call main XA feeder
+ spu.xapGlobal = xap;                  // store info for save states
 }
 
 // CDDA AUDIO
-int DF_SPUplayCDDAchannel(short *pcm, int nbytes)
+int DF_SPUplayCDDAchannel(short *pcm, int nbytes, unsigned int cycle, int unused)
 {
  if (!pcm)      return -1;
  if (nbytes<=0) return -1;
 
- return FeedCDDA((unsigned char *)pcm, nbytes);
+ if (spu.CDDAPlay == spu.CDDAFeed)
+  do_samples(cycle, 1);                // catch up to prevent source underflows later
+
+ FeedCDDA((unsigned char *)pcm, nbytes);
+ return 0;
+}
+
+void DF_SPUsetCDvol(unsigned char ll, unsigned char lr,
+  unsigned char rl, unsigned char rr, unsigned int cycle)
+{
+ if (spu.XAPlay != spu.XAFeed || spu.CDDAPlay != spu.CDDAFeed)
+  do_samples(cycle, 1);
+ spu.cdv.ll = ll;
+ spu.cdv.lr = lr;
+ spu.cdv.rl = rl;
+ spu.cdv.rr = rr;
 }
 
 // to be called after state load
@@ -1094,7 +1148,8 @@ static void SetupStreams(void)
 // spu.CDDAStart =                                       // alloc cdda buffer
 //  (uint32_t *)malloc(CDDA_BUFFER_SIZE);
   spu.CDDAStart = (uint32_t *)CDDABuf;
- spu.CDDAEnd   = spu.CDDAStart + CDDA_BUFFER_UNIT;
+ //spu.CDDAEnd   = spu.CDDAStart + CDDA_BUFFER_UNIT; // 16384 is the CDDA_BUFFER_UNIT
+ spu.CDDAEnd   = spu.CDDAStart + CDDA_BUFFER_SIZE / sizeof(uint32_t);
  spu.CDDAPlay  = spu.CDDAStart;
  spu.CDDAFeed  = spu.CDDAStart;
 
@@ -1126,13 +1181,11 @@ static void RemoveStreams(void)
 //    }
 }
 
-extern bool readFromCdData;
 // SPUINIT: this func will be called first by the main emu
 long DF_SPUinit(void)
 {
  int i;
 
-  readFromCdData = false;
   spu_config.iUseReverb = 1;
   spu_config.idiablofix = 0;
   spu_config.iUseInterpolation = 1;
@@ -1231,44 +1284,12 @@ long DF_SPUshutdown(void)
     return 0;
 }
 
-// SPUTEST: we don't test, we are always fine ;)
-long DF_SPUtest(void)
-{
- return 0;
-}
-
-// SPUCONFIGURE: call config dialog
-long DF_SPUconfigure(void)
-{
-#ifdef _MACOSX
- DoConfiguration();
-#else
-// StartCfgTool("CFG");
-#endif
- return 0;
-}
-
-// SPUABOUT: show about window
-void DF_SPUabout(void)
-{
-#ifdef _MACOSX
- DoAbout();
-#else
-// StartCfgTool("ABOUT");
-#endif
-}
-
 // SETUP CALLBACKS
 // this functions will be called once,
 // passes a callback that should be called on SPU-IRQ/cdda volume change
-void DF_SPUregisterCallback(void (CALLBACK *callback)(void))
+void DF_SPUregisterCallback(void (CALLBACK *callback)(int))
 {
  spu.irqCallback = callback;
-}
-
-void DF_SPUregisterCDDAVolume(void (CALLBACK *CDDAVcallback)(unsigned short,unsigned short))
-{
- spu.cddavCallback = CDDAVcallback;
 }
 
 void DF_SPUregisterScheduleCb(void (CALLBACK *callback)(unsigned int))

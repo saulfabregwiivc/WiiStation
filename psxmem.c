@@ -51,8 +51,11 @@
 #include "Gamecube/fileBrowser/fileBrowser-CARD.h"
 #include "Gamecube/fileBrowser/fileBrowser-DVD.h"
 #include "Gamecube/wiiSXconfig.h"
+#include "Gamecube/DEBUG.h"
 
 #include "Gamecube/vm/vm.h"
+
+bool lightrec_mmap_inited = false;
 
 #include <ogc/machine/processor.h>
 #include <ogc/cast.h>
@@ -83,27 +86,39 @@ s8 *psxH = NULL; // Scratch Pad (1K) & Hardware Registers (8K)
 u8* psxMemWLUT[0x10000] __attribute__((aligned(32)));
 u8* psxMemRLUT[0x10000] __attribute__((aligned(32)));
 
+#define BUF_SIZE 0x400000 // 4 MiB code buffer for Lightrec and DYNAREC
+extern char recBuffer[BUF_SIZE] __attribute__((aligned(32)));
+
 int psxMemInit() {
 	int i;
 
 	psxP = &psxM[0x200000];
 	psxH = &psxM[0x210000];
 
-    if (Config.Cpu == DYNACORE_DYNAREC)
+    if (Config.Cpu == DYNACORE_DYNAREC) // Lightrec
 	{
-		/* Memory-map the allocated buffers */
-		if (lightrec_mmap(psxM, 0x0, 0x200000)
-			|| lightrec_mmap(psxM, 0x200000, 0x200000)
-			|| lightrec_mmap(psxM, 0x400000, 0x200000)
-			|| lightrec_mmap(psxM, 0x600000, 0x200000)) {
-			SysMessage(_("Error mapping RAM"));
-		}
+		if (!lightrec_mmap_inited)
+        {
 
-		if (lightrec_mmap(psxR, 0x1fc00000, 0x80000))
-			SysMessage(_("Error mapping BIOS"));
+			/* Memory-map the allocated buffers */
+			if (lightrec_mmap(psxM, 0x0, 0x200000)
+				|| lightrec_mmap(psxM, 0x200000, 0x200000)
+				|| lightrec_mmap(psxM, 0x400000, 0x200000)
+				|| lightrec_mmap(psxM, 0x600000, 0x200000)) {
+				SysMessage(_("Error mapping RAM"));
+			}
 
-		if (lightrec_mmap(psxM + 0x210000, 0x1f800000, 0x3000))
-			SysMessage(_("Error mapping scratch/IO"));
+			if (lightrec_mmap(psxR, 0x1fc00000, 0x80000))
+				SysMessage(_("Error mapping BIOS"));
+
+			if (lightrec_mmap(psxM + 0x210000, 0x1f800000, 0x3000))
+				SysMessage(_("Error mapping scratch/IO"));
+
+			if (lightrec_mmap(recBuffer, 0x800000, BUF_SIZE))
+				SysMessage(_("Error mapping scratch/IO"));
+
+			lightrec_mmap_inited = true;
+        }
 	}
 
 	memset(psxMemRLUT, 0, 0x10000 * sizeof(void*));
@@ -208,6 +223,23 @@ void psxMemShutdown() {
 
 static int writeok=1;
 
+void psxMemOnIsolate(int enable)
+{
+	if (enable) {
+		memset(psxMemWLUT + 0x0000, (int)(uintptr_t)INVALID_PTR, 0x80 * sizeof(void *));
+		memset(psxMemWLUT + 0x8000, (int)(uintptr_t)INVALID_PTR, 0x80 * sizeof(void *));
+		//memset(psxMemWLUT + 0xa000, (int)(uintptr_t)INVALID_PTR, 0x80 * sizeof(void *));
+	} else {
+		int i;
+		for (i = 0; i < 0x80; i++)
+			psxMemWLUT[i + 0x0000] = (void *)&psxM[(i & 0x1f) << 16];
+		memcpy(psxMemWLUT + 0x8000, psxMemWLUT, 0x80 * sizeof(void *));
+		memcpy(psxMemWLUT + 0xa000, psxMemWLUT, 0x80 * sizeof(void *));
+	}
+	psxCpu->Notify(enable ? R3000ACPU_NOTIFY_CACHE_ISOLATED
+			: R3000ACPU_NOTIFY_CACHE_UNISOLATED, NULL);
+}
+
 u8 psxMemRead8(u32 mem) {
 	u32 t;
 
@@ -286,7 +318,7 @@ u32 psxMemRead32(u32 mem) {
 	}
 }
 
-void psxMemWrite8(u32 mem, u8 value) {
+void psxMemWrite8(u32 mem, u32 value) {
 	u32 t;
 
 	t = mem >> 16;
@@ -299,9 +331,9 @@ void psxMemWrite8(u32 mem, u8 value) {
 		char *p = (char *)(psxMemWLUT[t]);
 		if (p != NULL) {
 			*(u8  *)(p + (mem & 0xffff)) = value;
-#ifdef PSXREC
+//#ifdef PSXREC
 			psxCpu->Clear((mem&(~3)), 1);
-#endif
+//#endif
 		} else {
 #ifdef PSXMEM_LOG
 			PSXMEM_LOG("err sb %8.8lx\n", mem);
@@ -310,7 +342,7 @@ void psxMemWrite8(u32 mem, u8 value) {
 	}
 }
 
-void psxMemWrite16(u32 mem, u16 value) {
+void psxMemWrite16(u32 mem, u32 value) {
 	u32 t;
 
 	t = mem >> 16;
@@ -329,9 +361,9 @@ void psxMemWrite16(u32 mem, u16 value) {
 			//*(u16 *)(p + (mem & 0xffff)) = SWAPu16(value);
 			STORE_SWAP16p((p + (mem & 0xffff)), value);
             // upd xjsxjs197 end
-#ifdef PSXREC
+//#ifdef PSXREC
 			psxCpu->Clear((mem & (~3)), 1);
-#endif
+//#endif
 		} else {
 #ifdef PSXMEM_LOG
 			PSXMEM_LOG("err sh %8.8lx\n", mem);
@@ -360,15 +392,15 @@ void psxMemWrite32(u32 mem, u32 value) {
 			//*(u32 *)(p + (mem & 0xffff)) = SWAPu32(value);
 			STORE_SWAP32p((p + (mem & 0xffff)), value);
             // upd xjsxjs197 end
-#ifdef PSXREC
+//#ifdef PSXREC
 			psxCpu->Clear(mem, 1);
-#endif
+//#endif
 		} else {
 			if (mem != 0xfffe0130) {
-#ifdef PSXREC
+//#ifdef PSXREC
 				if (!writeok)
 					psxCpu->Clear(mem, 1);
-#endif
+//#endif
 
 #ifdef PSXMEM_LOG
 				if (writeok) { PSXMEM_LOG("err sw %8.8lx\n", mem); }

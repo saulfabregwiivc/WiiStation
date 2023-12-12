@@ -83,4 +83,20 @@
    .globl GConTexture_length
    GConTexture_length:
    .long (GConTexture_length - GConTexture)
+   
+   .globl JustTexture
+   .balign 32
+   JustTexture:
+   .incbin	"../menu/resources/Just.tx"
+   .globl JustTexture_length
+   JustTexture_length:
+   .long (JustTexture_length - JustTexture)
+   
+   .globl PSMouseTexture
+   .balign 32
+   PSMouseTexture:
+   .incbin	"../menu/resources/PSMouse.tx"
+   .globl PSMouseTexture_length
+   PSMouseTexture_length:
+   .long (PSMouseTexture_length - PSMouseTexture)
 

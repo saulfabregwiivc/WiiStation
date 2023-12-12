@@ -46,7 +46,6 @@ extern char * GetGameBios(char * biosPath, char * fileName, int isoFileNameLen);
 extern char* filenameFromAbsPath(char* absPath);
 extern u32 __di_check_ahbprot(void);
 extern unsigned int cdrIsoMultidiskSelect;
-extern bool swapIso;
 extern bool executedBios;
 
 extern "C" {
@@ -74,10 +73,8 @@ extern "C" {
 int SysInit();
 void SysReset();
 void SysClose();
-void SysPrintf(const char *fmt, ...);
 void *SysLoadLibrary(char *lib);
 void *SysLoadSym(void *lib, char *sym);
-char *SysLibError();
 void SysCloseLibrary(void *lib);
 void SysUpdate();
 void SysRunGui();
@@ -85,10 +82,8 @@ void SysMessage(char *fmt, ...);
 void LidInterrupt();
 }
 
-unsigned int* xfb[2] = { NULL, NULL };	/*** Framebuffers ***/
-int whichfb = 0;        /*** Frame buffer toggle ***/
+u32* xfb[3] = { NULL, NULL, NULL };	/*** Framebuffers ***/
 GXRModeObj *vmode;				/*** Graphics Mode Object ***/
-#define DEFAULT_FIFO_SIZE ( 256 * 1024 )
 BOOL hasLoadedISO = FALSE;
 fileBrowser_file isoFile;  //the ISO file
 fileBrowser_file cddaFile; //the CDDA file
@@ -104,7 +99,7 @@ PcsxConfig Config;
 char dynacore;
 char biosDevice;
 char LoadCdBios=0;
-char frameLimit;
+char frameLimit[2];
 char frameSkip;
 char useDithering;
 extern char audioEnabled;
@@ -125,15 +120,14 @@ char screenMode = 0;
 char videoMode = 0;
 char fileSortMode = 1;
 char padAutoAssign;
-char padType[2];
-char padAssign[2];
+char padType[10];
+char padAssign[10];
+char padLightgun[10];
 char rumbleEnabled;
 char loadButtonSlot;
 char controllerType;
 char numMultitaps;
 char lang = 0;
-char oldLang = 0;
-char canChangeFont = 0;
 char fastLoad = 0;
 char originalMode = 0;
 char bilinearFilter = 1;
@@ -141,6 +135,7 @@ char trapFilter = 1;
 char interlacedMode = 0;
 char deflickerFilter = 1;
 char lightGun = 0;
+char memCard[2];
 
 #define CONFIG_STRING_TYPE 0
 #define CONFIG_STRING_SIZE 256
@@ -150,6 +145,7 @@ char smbShareName[CONFIG_STRING_SIZE];
 char smbIpAddr[CONFIG_STRING_SIZE];
 
 int stop = 0;
+bool needInitCpu = true;
 
 static struct {
 	const char* key;
@@ -172,14 +168,30 @@ static struct {
   { "AutoSave", &autoSave, AUTOSAVE_DISABLE, AUTOSAVE_ENABLE },
   { "BiosDevice", &biosDevice, BIOSDEVICE_HLE, BIOSDEVICE_USB },
   { "BootThruBios", &LoadCdBios, BOOTTHRUBIOS_NO, BOOTTHRUBIOS_YES },
-  { "LimitFrames", &frameLimit, FRAMELIMIT_NONE, FRAMELIMIT_AUTO },
+  { "LimitFrames", &frameLimit[1], FRAMELIMIT_NONE, FRAMELIMIT_AUTO },
   { "SkipFrames", &frameSkip, FRAMESKIP_DISABLE, FRAMESKIP_ENABLE },
   { "Dithering", &useDithering, USEDITHER_NONE, USEDITHER_ALWAYS },
   { "PadAutoAssign", &padAutoAssign, PADAUTOASSIGN_MANUAL, PADAUTOASSIGN_AUTOMATIC },
-  { "PadType1", &padType[0], PADTYPE_NONE, PADTYPE_WII },
-  { "PadType2", &padType[1], PADTYPE_NONE, PADTYPE_WII },
-  { "PadAssign1", &padAssign[0], PADASSIGN_INPUT0, PADASSIGN_INPUT3 },
-  { "PadAssign2", &padAssign[1], PADASSIGN_INPUT0, PADASSIGN_INPUT3 },
+  { "PadType1", &padType[0], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType2", &padType[1], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType3", &padType[2], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType4", &padType[3], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType5", &padType[4], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType6", &padType[5], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType7", &padType[6], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType8", &padType[7], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType9", &padType[8], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadType10", &padType[9], PADTYPE_NONE, PADTYPE_MULTITAP },
+  { "PadAssign1", &padAssign[0], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign2", &padAssign[1], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign3", &padAssign[2], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign4", &padAssign[3], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign5", &padAssign[4], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign6", &padAssign[5], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign7", &padAssign[6], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign8", &padAssign[7], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign9", &padAssign[8], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
+  { "PadAssign10", &padAssign[9], PADASSIGN_INPUT0, PADASSIGN_INPUT1D },
   { "RumbleEnabled", &rumbleEnabled, RUMBLE_DISABLE, RUMBLE_ENABLE },
   { "LoadButtonSlot", &loadButtonSlot, LOADBUTTON_SLOT0, LOADBUTTON_DEFAULT },
   { "ControllerType", &controllerType, CONTROLLERTYPE_STANDARD, CONTROLLERTYPE_ANALOG },
@@ -188,19 +200,34 @@ static struct {
   { "smbpassword", smbPassWord, CONFIG_STRING_TYPE, CONFIG_STRING_TYPE },
   { "smbsharename", smbShareName, CONFIG_STRING_TYPE, CONFIG_STRING_TYPE },
   { "smbipaddr", smbIpAddr, CONFIG_STRING_TYPE, CONFIG_STRING_TYPE },
-  { "lang", &lang, ENGLISH, ITALIAN },
+  { "lang", &lang, ENGLISH, TURKISH },
   { "fastLoad", &fastLoad, 0, 1 },
   { "TVMode", &originalMode, ORIGINALMODE_DISABLE, ORIGINALMODE_ENABLE },
   { "BilinearFilter", &bilinearFilter, BILINEARFILTER_DISABLE, BILINEARFILTER_ENABLE },
   { "TrapFilter", &trapFilter, TRAPFILTER_DISABLE, TRAPFILTER_ENABLE },
   { "Interlaced", &interlacedMode, INTERLACED_DISABLE, INTERLACED_ENABLE },
   { "DeflickerFilter", &deflickerFilter, DEFLICKER_DISABLE, DEFLICKER_ENABLE },
-  { "LightGun", &lightGun, LIGHTGUN_DISABLE, LIGHTGUN_ENABLE }
+  { "LightGun", &lightGun, LIGHTGUN_DISABLE, LIGHTGUN_MOUSE },
+  { "Memcard0", &memCard[0], MEMCARD_DISABLE, MEMCARD_ENABLE },
+  { "Memcard1", &memCard[1], MEMCARD_DISABLE, MEMCARD_ENABLE },
+  { "PadLightgun1", &padLightgun[0], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun2", &padLightgun[1], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun3", &padLightgun[2], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun4", &padLightgun[3], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun5", &padLightgun[4], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun6", &padLightgun[5], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun7", &padLightgun[6], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun8", &padLightgun[7], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun9", &padLightgun[8], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE },
+  { "PadLightgun10", &padLightgun[9], PADLIGHTGUN_DISABLE, PADLIGHTGUN_ENABLE }
 };
 void handleConfigPair(char* kv);
 void readConfig(FILE* f);
 void writeConfig(FILE* f);
 int checkBiosExists(int testDevice);
+static void loadSeparatelySetting();
+static bool loadSeparatelySettingItem(char* s1, char* s2, bool isUsb);
+static void biosFileInit();
 
 void loadSettings(int argc, char *argv[])
 {
@@ -214,7 +241,7 @@ void loadSettings(int argc, char *argv[])
 #endif
 	printToScreen    = 1; // Show DEBUG text on screen
 	printToSD        = 0; // Disable SD logging
-	frameLimit		 = 1; // Auto limit FPS
+	frameLimit[1]		 = 1; // Auto limit FPS
 	frameSkip		 = 0; // Disable frame skipping
 	useDithering		 = 1; // Default dithering (set to 0 (disabled) in PEOPSgpu)
 	saveEnabled      = 0; // Don't save game
@@ -227,10 +254,14 @@ void loadSettings(int argc, char *argv[])
 	videoMode		 = VIDEOMODE_AUTO;
 	fileSortMode	 = FILESORT_DIRS_FIRST;
 	padAutoAssign	 = PADAUTOASSIGN_AUTOMATIC;
-	padType[0]		 = PADTYPE_NONE;
-	padType[1]		 = PADTYPE_NONE;
-	padAssign[0]	 = PADASSIGN_INPUT0;
+	for (int i = 0; i < 10; i++){
+		padType[i]		 = PADTYPE_NONE;
+		padAssign[i]	 = PADASSIGN_INPUT0;
+		padLightgun[i]	 = PADLIGHTGUN_ENABLE;
+	}
 	padAssign[1]	 = PADASSIGN_INPUT1;
+	memCard[0]		 = MEMCARD_ENABLE;
+	memCard[1]		 = MEMCARD_ENABLE;
 	rumbleEnabled	 = RUMBLE_ENABLE;
 	loadButtonSlot	 = LOADBUTTON_DEFAULT;
 	controllerType	 = CONTROLLERTYPE_STANDARD;
@@ -244,10 +275,8 @@ void loadSettings(int argc, char *argv[])
 	Config.PsxOut = 1;
 	Config.HLE = 1;
 	Config.Xa = 0;  //XA enabled
-	// upd xjsxjs197 start
-	//Config.Cdda = 1; //CDDA disabled
 	Config.Cdda = 0; //CDDA enabled
-	// upd xjsxjs197 end
+	Config.cycle_multiplier = CYCLE_MULT_DEFAULT;
 	iVolume = volume; //Volume="medium" in PEOPSspu
 	Config.PsxAuto = 1; //Autodetect
 	LoadCdBios = BOOTTHRUBIOS_NO;
@@ -360,7 +389,6 @@ void loadSettings(int argc, char *argv[])
 	}
 #endif
 
-    oldLang = lang;
 	//Test for Bios file
 	if(biosDevice != BIOSDEVICE_HLE)
 		if(checkBiosExists((int)biosDevice) == FILE_BROWSER_ERROR_NO_FILE)
@@ -368,7 +396,7 @@ void loadSettings(int argc, char *argv[])
 
 	//Synch settings with Config
 	Config.Cpu=dynacore;
-	iUseDither = useDithering;
+	//iUseDither = useDithering;
 	iVolume = volume;
 }
 
@@ -388,11 +416,12 @@ void ShutdownWii()
 }
 #endif
 
-void video_mode_init(GXRModeObj *videomode,unsigned int *fb1, unsigned int *fb2)
+void video_mode_init(GXRModeObj *videomode, u32 *fb1, u32 *fb2, u32 *fb3)
 {
 	vmode = videomode;
 	xfb[0] = fb1;
 	xfb[1] = fb2;
+	xfb[2] = fb3;
 }
 
 // Plugin structure
@@ -502,11 +531,6 @@ int main(int argc, char *argv[])
 		memset(AutobootROM, 0, sizeof(AutobootROM));
 	}
 
-		if (Config.Cpu == DYNACORE_DYNAREC)
-		{
-			VM_Init(1024*1024, 256*1024); // whatever for now, we're not really using this for anything other than mmap on Wii.
-		}
-
 		L2Enhance();
 
         u32 ios = IOS_GetVersion();
@@ -524,9 +548,13 @@ int main(int argc, char *argv[])
 	control_info_init(); //Perform controller auto assignment at least once at startup.
 
 	loadSettings(argc, argv);
-	// added by xjsxjs197 start
+
+	#ifdef HW_RVL
+	VM_Init(1024*1024, 256*1024); // whatever for now, we're not really using this for anything other than mmap on Wii.
+	#endif // HW_RVL
+
 	LoadLanguage();
-	// added by xjsxjs197 end
+	ChangeLanguage();
 
 	MenuContext *menu = new MenuContext(vmode);
 	VIDEO_SetPostRetraceCallback (ScanPADSandReset);
@@ -567,7 +595,118 @@ int main(int argc, char *argv[])
 
 	delete menu;
 
+	ReleaseLanguage();
+
 	return 0;
+}
+
+void psxCpuInit()
+{
+    if (Config.Cpu == DYNACORE_INTERPRETER) {
+		psxCpu = &psxInt;
+	}
+#if defined(__x86_64__) || defined(__i386__) || defined(__sh__) || defined(__ppc__) || defined(HW_RVL) || defined(HW_DOL)
+	if (Config.Cpu == DYNACORE_DYNAREC)
+	{
+		psxCpu = &psxLightrec;
+	}
+	if (Config.Cpu == DYNACORE_DYNAREC_OLD)
+	{
+		psxCpu = &psxRec;
+	}
+#endif
+
+    psxCpu->Init();
+}
+
+static void biosFileInit()
+{
+	biosFile_dir = &biosDir_libfat_Default;
+	if (biosDevice != BIOSDEVICE_HLE) {
+		Config.HLE = BIOS_USER_DEFINED;
+		biosFile_dir = (biosDevice == BIOSDEVICE_SD) ? &biosDir_libfat_Default : &biosDir_libfat_USB;
+	} else {
+		Config.HLE = BIOS_HLE;
+	}
+
+	// Even in HLE mode, the corresponding BIOS file needs to be loaded for games
+	// that have modified the BIOS font library
+	biosFile_readFile  = fileBrowser_libfat_readFile;
+	biosFile_open      = fileBrowser_libfat_open;
+	biosFile_init      = fileBrowser_libfat_init;
+	biosFile_deinit    = fileBrowser_libfat_deinit;
+	if (biosFile) {
+		free(biosFile);
+ 	}
+	biosFile = (fileBrowser_file*)memalign(32,sizeof(fileBrowser_file));
+	memcpy(biosFile,biosFile_dir,sizeof(fileBrowser_file));
+	strcat(biosFile->name, GetGameBios(biosFile->name, filenameFromAbsPath(isoFile.name), strlen(isoFile.name)));
+	biosFile_init(biosFile);  //initialize the bios device (it might not be the same as ISO device)
+}
+
+static bool loadSeparatelySettingItem(char* s1, char* s2, bool isUsb)
+{
+    struct stat s;
+    char settingPathBuf[256];
+    fileBrowser_file* configFile_file;
+    sprintf(settingPathBuf, "%s%s%s", s1, s2, ".cfg");
+    if (stat(settingPathBuf, &s))
+    {
+        return false;
+    }
+
+    configFile_file = isUsb ? &saveDir_libfat_USB : &saveDir_libfat_Default;
+    int (*configFile_init)(fileBrowser_file*) = fileBrowser_libfat_init;
+    if (configFile_init(configFile_file)) {        //only if device initialized ok
+        FILE* f = fopen( settingPathBuf, "r" );   //attempt to open file
+        if (f) {
+            readConfig(f);
+            fclose(f);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void loadSeparatelySetting()
+{
+    // First, we have to load the common (global) settings.
+    // Load common (global) settings from USB device
+    if (!loadSeparatelySettingItem("usb:/wiisxrx/", "settingsRX2022", true))
+    {
+        // Load common (global) settings from SD card
+        loadSeparatelySettingItem("sd:/wiisxrx/", "settingsRX2022", false);
+    }
+
+    // Then, we can load separately game settings.
+    // Load separately game settings from USB device
+    if (!loadSeparatelySettingItem("usb:/wiisxrx/settings/", CdromId, true))
+    {
+        // Load separately game settings from SD card
+        if (!loadSeparatelySettingItem("sd:/wiisxrx/settings/", CdromId, false)){}
+    }
+
+    Config.pR3000Fix = 0;
+    Config.Cpu = dynacore;
+
+    // Init biosFile pointers and stuff
+    biosFileInit();
+
+    extern bool lightrec_mmap_inited;
+    if (Config.Cpu == DYNACORE_DYNAREC && !lightrec_mmap_inited) // Lightrec
+    {
+        psxMemInit();
+    }
+    psxCpuInit();
+    needInitCpu = true;
+
+    // Setting the following values in OpenPlugins is incorrect because the CdromId has not been obtained yet
+    // Only after Apply_Hacks_Cdrom was executed , dwActFixes and iUseDither set the correct values
+    // Setting variables directly in the GPU is not good......
+    extern uint32_t dwActFixes;
+    extern int iUseDither;
+    dwActFixes = Config.hacks.dwActFixes;
+    iUseDither = useDithering;
 }
 
 // loadISO loads an ISO file as current media to read from.
@@ -591,7 +730,8 @@ int loadISOSwap(fileBrowser_file* file) {
 
 	CheckCdrom();
 
-	swapIso = true;
+	loadSeparatelySetting();
+
 	LoadCdrom();
 
 	LidInterrupt();
@@ -614,6 +754,7 @@ int loadISO(fileBrowser_file* file)
 		SysClose();
 		hasLoadedISO = FALSE;
 	}
+	needInitCpu = false;
 	if(SysInit() < 0)
 		return -1;
 	hasLoadedISO = TRUE;
@@ -624,14 +765,9 @@ int loadISO(fileBrowser_file* file)
 		Load(file);
 	}
 	else {
-		long lastPsxType = Config.PsxType;
 		CheckCdrom();
-//	    if (Config.PsxType != lastPsxType)
-//		{
-//			SysClose();
-//			SysInit();
-//			CheckCdrom();
-//		}
+
+		loadSeparatelySetting();
 
 		SysReset();
 		LoadCdrom();
@@ -757,52 +893,20 @@ int SysInit() {
 	if(OpenPlugins() < 0)
 		return -1;
 
-	//Init biosFile pointers and stuff
-	// upd xjsxjs197 start
-	/*if(biosDevice != BIOSDEVICE_HLE) {
-		biosFile_dir = (biosDevice == BIOSDEVICE_SD) ? &biosDir_libfat_Default : &biosDir_libfat_USB;
-		biosFile_readFile  = fileBrowser_libfat_readFile;
-		biosFile_open      = fileBrowser_libfat_open;
-		biosFile_init      = fileBrowser_libfat_init;
-		biosFile_deinit    = fileBrowser_libfat_deinit;
-		if(biosFile) {
-    		free(biosFile);
-	 	}
-		biosFile = (fileBrowser_file*)memalign(32,sizeof(fileBrowser_file));
-		memcpy(biosFile,biosFile_dir,sizeof(fileBrowser_file));
-		strcat(biosFile->name, "/SCPH1001.BIN");
-		biosFile_init(biosFile);  //initialize the bios device (it might not be the same as ISO device)
-		Config.HLE = BIOS_USER_DEFINED;
-	} else {
-		Config.HLE = BIOS_HLE;
-	}*/
-
-	biosFile_dir = &biosDir_libfat_Default;
-	if(biosDevice != BIOSDEVICE_HLE) {
-		Config.HLE = BIOS_USER_DEFINED;
-		biosFile_dir = (biosDevice == BIOSDEVICE_SD) ? &biosDir_libfat_Default : &biosDir_libfat_USB;
-	} else {
-		Config.HLE = BIOS_HLE;
-	}
-
-	biosFile_readFile  = fileBrowser_libfat_readFile;
-	biosFile_open      = fileBrowser_libfat_open;
-	biosFile_init      = fileBrowser_libfat_init;
-	biosFile_deinit    = fileBrowser_libfat_deinit;
-	if(biosFile) {
-		free(biosFile);
- 	}
-	biosFile = (fileBrowser_file*)memalign(32,sizeof(fileBrowser_file));
-	memcpy(biosFile,biosFile_dir,sizeof(fileBrowser_file));
-	strcat(biosFile->name, GetGameBios(biosFile->name, filenameFromAbsPath(isoFile.name), strlen(isoFile.name)));
-	biosFile_init(biosFile);  //initialize the bios device (it might not be the same as ISO device)
-	// upd xjsxjs197 end
-
 	return 0;
 }
 
+extern void pl_timing_prepare(int is_pal_);
+int g_emu_resetting;
+
 void SysReset() {
+    g_emu_resetting = 1;
+	// reset can run code, timing must be set
+	pl_timing_prepare(Config.PsxType);
+
 	psxReset();
+
+	g_emu_resetting = 0;
 }
 
 void SysStartCPU() {
@@ -864,6 +968,11 @@ int framesdone = 0;
 void SysUpdate()
 {
 	framesdone++;
+	// reamed hack
+	{
+		extern void pl_frame_limit(void);
+		pl_frame_limit();
+	}
 #ifdef PROFILE
 	refresh_stat();
 #endif

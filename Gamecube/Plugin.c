@@ -157,7 +157,7 @@ void SignalExit(int sig) {
 	OnFile_Exit();
 }
 
-void SPUirq(void);
+void SPUirq(int);
 
 int NetOpened = 0;
 
@@ -174,7 +174,6 @@ int _OpenPlugins() {
 /*	signal(SIGINT, SignalExit);
 	signal(SIGPIPE, SignalExit);*/
 
-	GPU_clearDynarec(clearDynarec);
 	ret = CDR_open();
 	if (ret < 0) { SysPrintf("Error Opening CDR Plugin\n"); return -1; }
 	ret = SPU_open();
@@ -247,6 +246,10 @@ int _OpenPlugins() {
 
 int OpenPlugins() {
 	int ret;
+
+    extern char useDithering;
+	extern void plugin_call_rearmed_cbs(unsigned long autoDwActFixes, int cfgUseDithering);
+	plugin_call_rearmed_cbs(Config.hacks.dwActFixes, useDithering);
 
 	while ((ret = _OpenPlugins()) == -2) {
 		ReleasePlugins();

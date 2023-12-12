@@ -87,6 +87,8 @@ typedef uintptr_t uptr;
 extern int Log;
 void __Log(char *fmt, ...);
 
+#define CYCLE_MULT_DEFAULT 175
+
 typedef struct {
 	char Gpu[256];
 	char Spu[256];
@@ -116,6 +118,22 @@ typedef struct {
 	long UseNet;
 	long VSyncWA;
 	long pR3000Fix;
+	bool icache_emulation;
+	bool DisableStalls;
+	bool PreciseExceptions;
+	int GpuListWalking;
+	int cycle_multiplier; // 100 for 1.0
+	int cycle_multiplier_override;
+	struct {
+		bool cdr_read_timing;
+		bool gpu_slow_list_walking;
+		bool gpu_busy_hack;
+		bool gpu_timing1024;
+		// variable for see if game has special correction (dwActFixes) autoFix
+		unsigned long dwActFixes;
+		// variable for see if game uses hacks from Lightrec
+		unsigned long lightrec_hacks;
+	} hacks;
 } PcsxConfig;
 
 extern PcsxConfig Config;
@@ -149,17 +167,11 @@ enum {
 	PSX_TYPE_PAL
 };	/* PSX Type */
 
-// add xjsxjs197 start
+// To improve execution efficiency, use built-in instructions lhbrx, lwbrx, sthbrx, stwbrx to accelerate byte swapping
 #define LOAD_SWAP16p(ptr) ({u16 __ret, *__ptr=(ptr); __asm__ ("lhbrx %0, 0, %1" : "=r" (__ret) : "r" (__ptr)); __ret;})
 #define LOAD_SWAP32p(ptr) ({u32 __ret, *__ptr=(ptr); __asm__ ("lwbrx %0, 0, %1" : "=r" (__ret) : "r" (__ptr)); __ret;})
 #define STORE_SWAP16p(ptr,val) ({u16 __val=(val), *__ptr=(ptr); __asm__ ("sthbrx %0, 0, %1" : : "r" (__val), "r" (__ptr) : "memory");})
 #define STORE_SWAP32p(ptr,val) ({u32 __val=(val), *__ptr=(ptr); __asm__ ("stwbrx %0, 0, %1" : : "r" (__val), "r" (__ptr) : "memory");})
 #define STORE_SWAP32p2(ptr,val) ({u32 __val=(val); __asm__ ("stwbrx %0, 0, %1" : : "r" (__val), "r" (ptr) : "memory");})
-
-extern u32 tmpVal;
-extern u32 tmpAddr[1];
-extern u16 tmpVal16;
-extern u16 tmpAddr16[1];
-// add xjsxjs197 end
 
 #endif /* __PSXCOMMON_H__ */

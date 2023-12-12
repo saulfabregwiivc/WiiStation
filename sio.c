@@ -14,7 +14,7 @@
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.           *
+ *   51 Franklin Street, Fifth Floor, Boston, MA 02111-1307 USA.           *
  ***************************************************************************/
 
 /*
@@ -25,14 +25,17 @@
 #include "Gamecube/fileBrowser/fileBrowser.h"
 #include "Gamecube/fileBrowser/fileBrowser-libfat.h"
 #include <sys/stat.h>
+#include "Gamecube/wiiSXconfig.h"
+#include "Gamecube/PadSSSPSX.h"
 
 // *** FOR WORKS ON PADS AND MEMORY CARDS *****
 
 static unsigned char buf[256];
-unsigned char cardh[4] = { 0x00, 0x00, 0x5a, 0x5d };
+static unsigned char cardh1[4] = { 0xff, 0x08, 0x5a, 0x5d };
+static unsigned char cardh2[4] = { 0xff, 0x08, 0x5a, 0x5d };
 
-//static unsigned short StatReg = 0x002b;
 // Transfer Ready and the Buffer is Empty
+// static unsigned short StatReg = 0x002b;
 unsigned short StatReg = TX_RDY | TX_EMPTY;
 unsigned short ModeReg;
 unsigned short CtrlReg;
@@ -40,8 +43,8 @@ unsigned short BaudReg;
 
 static unsigned int bufcount;
 static unsigned int parp;
-static unsigned int mcdst,rdwr;
-static unsigned char adrH,adrL;
+static unsigned int mcdst, rdwr;
+static unsigned char adrH, adrL;
 static unsigned int padst;
 
 char mcd1Written = 0;
@@ -56,69 +59,20 @@ char *Mcd2Data = (char*)MCD2_LO;
 #else
 char Mcd1Data[MCD_SIZE], Mcd2Data[MCD_SIZE];
 #endif
+char McdDisable[2];
 
 // clk cycle byte
-// 4us * 8bits = ((PSXCLK / 1000000) * 32) / BIAS; (linuzappz)
+// 4us * 8bits = (PSXCLK / 1000000) * 32; (linuzappz)
+// TODO: add SioModePrescaler and BaudReg
 #define SIO_CYCLES		535
 
-#define SIO_INT() { \
-	if (!Config.Sio) { \
-		psxRegs.interrupt |= (1 << PSXINT_SIO); \
-		psxRegs.intCycle[PSXINT_SIO].cycle = SIO_CYCLES; \
-		psxRegs.intCycle[PSXINT_SIO].sCycle = psxRegs.cycle; \
-		new_dyna_set_event(PSXINT_SIO, SIO_CYCLES); \
-	} \
-}
-
-unsigned char sioRead8() {
-	unsigned char ret = 0;
-
-	if ((StatReg & RX_RDY)/* && (CtrlReg & RX_PERM)*/) {
-//		StatReg &= ~RX_OVERRUN;
-		ret = buf[parp];
-		if (parp == bufcount) {
-			StatReg &= ~RX_RDY;		// Receive is not Ready now
-			if (mcdst == 5) {
-				mcdst = 0;
-				if (rdwr == 2) {
-					switch (CtrlReg&0x2002) {
-						case 0x0002:
-							memcpy(Mcd1Data + (adrL | (adrH << 8)) * 128, &buf[1], 128);
-							mcd1Written = 1;
-							break;
-						case 0x2002:
-							memcpy(Mcd2Data + (adrL | (adrH << 8)) * 128, &buf[1], 128);
-							mcd2Written = 1;
-							break;
-					}
-				}
-			}
-			if (padst == 2) padst = 0;
-			if (mcdst == 1) {
-				mcdst = 2;
-				StatReg|= RX_RDY;
-			}
-		}
-	}
-
-#ifdef PAD_LOG
-	PAD_LOG("sio read8 ;ret = %x\n", ret);
-#endif
-	return ret;
-}
-
-void netError() {
-	ClosePlugins();
-	SysMessage(_("Connection closed!\n"));
-	SysRunGui();
-}
-
 void sioWrite8(unsigned char value) {
+	int more_data = 0;
 #ifdef PAD_LOG
 	PAD_LOG("sio write8 %x\n", value);
 #endif
 	switch (padst) {
-		case 1: SIO_INT();
+		case 1: set_event(PSXINT_SIO, SIO_CYCLES);
 			if ((value&0x40) == 0x40) {
 				padst = 2; parp = 1;
 				if (!Config.UseNet) {
@@ -139,6 +93,9 @@ void sioWrite8(unsigned char value) {
 				} else {
 					bufcount = 2 + (buf[parp] & 0x0f) * 2;
 				}
+				if (buf[parp] == 0xFF)
+					bufcount = 3;
+
 				if (buf[parp] == 0x41) {
 					switch (value) {
 						case 0x43:
@@ -154,11 +111,6 @@ void sioWrite8(unsigned char value) {
 			return;
 		case 2:
 			parp++;
-/*			if (buf[1] == 0x45) {
-				buf[parp] = 0;
-				SIO_INT();
-				return;
-			}*/
 			if (!Config.UseNet) {
 				switch (CtrlReg&0x2002) {
 					case 0x0002: buf[parp] = PAD1_poll(value); break;
@@ -167,16 +119,13 @@ void sioWrite8(unsigned char value) {
 			}
 
 			if (parp == bufcount) { padst = 0; return; }
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			return;
 	}
 
-    #ifdef DISP_DEBUG
-    //PRINT_LOG3("sioWrite8====%d=%d=%x", mcdst, rdwr, CtrlReg);
-    #endif // DISP_DEBUG*/
 	switch (mcdst) {
 		case 1:
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			if (rdwr) { parp++; return; }
 			parp = 1;
 			switch (value) {
@@ -186,7 +135,7 @@ void sioWrite8(unsigned char value) {
 			}
 			return;
 		case 2: // address H
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			adrH = value;
 			*buf = 0;
 			parp = 0;
@@ -194,7 +143,7 @@ void sioWrite8(unsigned char value) {
 			mcdst = 3;
 			return;
 		case 3: // address L
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			adrL = value;
 			*buf = adrH;
 			parp = 0;
@@ -202,7 +151,7 @@ void sioWrite8(unsigned char value) {
 			mcdst = 4;
 			return;
 		case 4:
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			parp = 0;
 			switch (rdwr) {
 				case 1: // read
@@ -210,7 +159,7 @@ void sioWrite8(unsigned char value) {
 					buf[1] = 0x5d;
 					buf[2] = adrH;
 					buf[3] = adrL;
-					switch (CtrlReg&0x2002) {
+					switch (CtrlReg & 0x2002) {
 						case 0x0002:
 							memcpy(&buf[4], Mcd1Data + (adrL | (adrH << 8)) * 128, 128);
 							mcd1Written = 1;
@@ -223,8 +172,8 @@ void sioWrite8(unsigned char value) {
 					{
 					char xor = 0;
 					int i;
-					for (i=2;i<128+4;i++)
-						xor^=buf[i];
+					for (i = 2; i < 128 + 4; i++)
+						xor ^= buf[i];
 					buf[132] = xor;
 					}
 					buf[133] = 0x47;
@@ -243,21 +192,55 @@ void sioWrite8(unsigned char value) {
 			return;
 		case 5:
 			parp++;
-			if (rdwr == 2) {
-				if (parp < 128) buf[parp+1] = value;
+			if ((rdwr == 1 && parp == 132) ||
+			    (rdwr == 2 && parp == 129)) {
+				// clear "new card" flags
+				if (CtrlReg & 0x2000)
+					cardh2[1] &= ~8;
+				else
+					cardh1[1] &= ~8;
 			}
-			SIO_INT();
+			if (rdwr == 2) {
+				if (parp < 128) buf[parp + 1] = value;
+			}
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			return;
 	}
 
 	switch (value) {
 		case 0x01: // start pad
+		case 0x02: // start pad
+		case 0x03: // start pad
+		case 0x04: // start pad
 			StatReg |= RX_RDY;		// Transfer is Ready
 
 			if (!Config.UseNet) {
 				switch (CtrlReg&0x2002) {
-					case 0x0002: buf[0] = PAD1_startPoll(1); break;
-					case 0x2002: buf[0] = PAD2_startPoll(2); break;
+					case 0x0002:
+						if (padType[0]){
+							SSS_SetMultiPad(0, value);
+							buf[0] = PAD1_startPoll(1);
+							break;
+						}
+						else{
+							buf[0] = 0xff;
+							parp = 0;
+							bufcount = 0;
+							return;
+						}
+
+					case 0x2002:
+						if (padType[1]){
+							SSS_SetMultiPad(1, value);
+							buf[0] = PAD1_startPoll(2);
+							break;
+						}
+						else{
+							buf[0] = 0xff;
+							parp = 0;
+							bufcount = 0;
+							return;
+						}
 				}
 			} else {
 				if ((CtrlReg & 0x2002) == 0x0002) {
@@ -294,16 +277,37 @@ void sioWrite8(unsigned char value) {
 			bufcount = 2;
 			parp = 0;
 			padst = 1;
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
 			return;
 		case 0x81: // start memcard
+		case 0x82: // start memcard
+		case 0x83: // start memcard
+		case 0x84: // start memcard
+			if (CtrlReg & 0x2000)
+			{
+				if (memCard[1] == MEMCARD_DISABLE || McdDisable[1])
+					goto no_device;
+				memcpy(buf, cardh2, 4);
+			}
+			else
+			{
+				if (memCard[0] == MEMCARD_DISABLE || McdDisable[0])
+					goto no_device;
+				memcpy(buf, cardh1, 4);
+			}
 			StatReg |= RX_RDY;
-			memcpy(buf, cardh, 4);
 			parp = 0;
 			bufcount = 3;
 			mcdst = 1;
 			rdwr = 0;
-			SIO_INT();
+			set_event(PSXINT_SIO, SIO_CYCLES);
+			return;
+		default:
+		no_device:
+			StatReg |= RX_RDY;
+			buf[0] = 0xff;
+			parp = 0;
+			bufcount = 0;
 			return;
 	}
 }
@@ -314,8 +318,55 @@ void sioWriteCtrl16(unsigned short value) {
 	if ((CtrlReg & SIO_RESET) || !(CtrlReg & DTR)) {
 		padst = 0; mcdst = 0; parp = 0;
 		StatReg = TX_RDY | TX_EMPTY;
-		psxRegs.interrupt&=~(1 << PSXINT_SIO);
+		psxRegs.interrupt &= ~(1 << PSXINT_SIO);
 	}
+}
+
+unsigned char sioRead8() {
+	unsigned char ret = 0;
+
+	if ((StatReg & RX_RDY)/* && (CtrlReg & RX_PERM)*/) {
+//		StatReg &= ~RX_OVERRUN;
+		ret = buf[parp];
+		if (parp == bufcount) {
+			StatReg &= ~RX_RDY;		// Receive is not Ready now
+			if (mcdst == 5) {
+				mcdst = 0;
+				if (rdwr == 2) {
+					switch (CtrlReg & 0x2002) {
+						case 0x0002:
+							memcpy(Mcd1Data + (adrL | (adrH << 8)) * 128, &buf[1], 128);
+							mcd1Written = 1;
+							break;
+						case 0x2002:
+							memcpy(Mcd2Data + (adrL | (adrH << 8)) * 128, &buf[1], 128);
+							mcd2Written = 1;
+							break;
+					}
+				}
+			}
+			if (padst == 2) padst = 0;
+			if (mcdst == 1) {
+				mcdst = 2;
+				StatReg|= RX_RDY;
+			}
+		}
+	}
+
+#ifdef PAD_LOG
+	PAD_LOG("sio read8 ;ret = %x\n", ret);
+#endif
+	return ret;
+}
+
+void netError() {
+	ClosePlugins();
+	SysMessage(_("Connection closed!\n"));
+
+	CdromId[0] = '\0';
+	CdromLabel[0] = '\0';
+
+	SysRunGui();
 }
 
 void sioInterrupt() {
@@ -323,11 +374,10 @@ void sioInterrupt() {
 	PAD_LOG("Sio Interrupt (CP0.Status = %x)\n", psxRegs.CP0.n.Status);
 #endif
 //	SysPrintf("Sio Interrupt\n");
-    if (!(StatReg & IRQ)) {
-	    StatReg|= IRQ;
-	    psxHu32ref(0x1070)|= SWAPu32(0x80);
-	    //psxRegs.interrupt|= 0x80000000;
-    }
+	if (!(StatReg & IRQ)) {
+		StatReg |= IRQ;
+		psxHu32ref(0x1070) |= SWAPu32(0x80);
+	}
 }
 
 //call me from menu, takes slot and save path as args
@@ -342,10 +392,12 @@ int LoadMcd(int mcd, fileBrowser_file *savepath) {
 	if(mcd == 1) {
 	  sprintf((char*)saveFile.name,"%s/%s.mcd",savepath->name,CdromId);
 	  data = &Mcd1Data[0];
+	  cardh1[1] |= 8; // mark as new
   }
 	if (mcd == 2) {
   	sprintf((char*)saveFile.name,"%s/slot2.mcd",savepath->name);
   	data = &Mcd2Data[0];
+	cardh2[1] |= 8;
 	}
 
 	if(saveFile_readFile(&saveFile, &temp, 4) == 4) {  //file exists
