@@ -32,6 +32,8 @@ SDL_SRCS	:= \
 	$(wildcard $(LIGHTREC_SRC_DIR)/memmanager.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/optimizer.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/regcache.c) \
+	$(wildcard $(LIGHTREC_SRC_DIR)/recompiler.c) \
+	$(wildcard $(LIGHTREC_SRC_DIR)/reaper.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/tlsf/*.c)
 
 # Library object files.
@@ -68,7 +70,7 @@ $(LIB_DIR)/libLightrecNoLog.a: $(LIGHRREC_OBJS)
 COMMON_FLAGS	:= -g -O2 -w $(MACHDEP) -fvisibility=hidden
 INCLUDES		:= -Iinclude -I$(LIBOGC_INC)
 DEFINES			:= -DGEKKO
-CFLAGS			:= $(COMMON_FLAGS) $(INCLUDES) $(INCLUDE) $(DEFINES)--pedantic -D__BIG_ENDIAN -D__powerpc__ -DBIG_ENDIAN -DLOG_LEVEL=0 -DNDEBUG
+CFLAGS			:= $(COMMON_FLAGS) $(INCLUDES) $(INCLUDE) $(DEFINES)--pedantic -D__BIG_ENDIAN -D__powerpc__ -DBIG_ENDIAN -DLOG_LEVEL=0 -DENABLE_THREADED_COMPILER -DNDEBUG
 
 # Test link flags.
 LDFLAGS			:= $(COMMON_FLAGS) -L$(LIB_DIR) -L$(LIBOGC_LIB) $(PORTLIBS_PATH)/wii/lib -llightning

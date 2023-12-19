@@ -32,6 +32,8 @@ SDL_SRCS	:= \
 	$(wildcard $(LIGHTREC_SRC_DIR)/memmanager.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/optimizer.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/regcache.c) \
+	$(wildcard $(LIGHTREC_SRC_DIR)/recompiler.c) \
+	$(wildcard $(LIGHTREC_SRC_DIR)/reaper.c) \
 	$(wildcard $(LIGHTREC_SRC_DIR)/tlsf/*.c)
 
 # Library object files.
