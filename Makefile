@@ -74,7 +74,7 @@ clean:
 	@$(MAKE) -C deps/lightrec clean -f Makefile.NoLog
 	@$(MAKE) -C deps/lightrec clean -f Makefile.WithLog
 	@$(MAKE) -C deps/libchdr/deps/zstd-1.5.5 clean -f Makefile.wii
-	@$(MAKE) -C deps/libchdr/deps/lzma-22.01 clean -f Makefile.wii
+	@$(MAKE) -C deps/libchdr/deps/lzma-19.00 clean -f Makefile.wii
 	@$(MAKE) -C deps/libchdr/deps/zlib-1.3.1 clean -f Makefile.wii
 	@$(MAKE) -C deps/libchdr clean -f Makefile.wii
 	@$(MAKE) -C Gamecube clean -f Makefile_Wii
