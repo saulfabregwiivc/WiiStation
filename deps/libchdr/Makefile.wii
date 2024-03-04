@@ -15,7 +15,7 @@ INCLUDES := ./ ./include/
 OBJ_DIR			:= obj/release
 LIB_DIR			:= lib
 LIBCHDR_OBJ_DIR		:= $(OBJ_DIR)
-LIBCHDR_SRC_DIR		:= ./src/
+LIBCHDR_SRC_DIR		:= ./src
 INSTALL_HEADER_DIR	?= $(PORTLIBS_PATH)/wii/include
 INSTALL_LIB_DIR		?= $(PORTLIBS_PATH)/wii/lib
 
@@ -24,10 +24,14 @@ PIPE_TO_SED := 2>&1 | sed "s/:\([0-9]*\):/\(\1\) :/"
 
 # Library source files.
 SDL_SRCS	:= \
-	$(wildcard $(LIBCHDR_SRC_DIR)/*.c)
+	$(wildcard $(LIBCHDR_SRC_DIR)/libchdr_bitstream.c) \
+	$(wildcard $(LIBCHDR_SRC_DIR)/libchdr_cdrom.c) \
+	$(wildcard $(LIBCHDR_SRC_DIR)/libchdr_chd.c) \
+	$(wildcard $(LIBCHDR_SRC_DIR)/libchdr_flac.c) \
+	$(wildcard $(LIBCHDR_SRC_DIR)/libchdr_huffman.c)
 
 # Library object files.
-LIGHRREC_OBJS	:= $(subst $(LIBCHDR_SRC_DIR),$(LIBCHDR_OBJ_DIR),$(SDL_SRCS:.c=.o))
+LIBCHDR_OBJS	:= $(subst $(LIBCHDR_SRC_DIR),$(LIBCHDR_OBJ_DIR),$(SDL_SRCS:.c=.o))
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			        -I$(LIBOGC_INC)
@@ -44,7 +48,8 @@ install: all
 	@mkdir -p $(INSTALL_HEADER_DIR) $(INSTALL_LIB_DIR)
 	@mkdir -p $(INSTALL_HEADER_DIR)/SDL
 	@cp -frv $(LIB_DIR)/*.* $(INSTALL_LIB_DIR)
-	@cp -frv include/*.* $(INSTALL_HEADER_DIR)/SDL
+	@cp -frv include/dr_libs/*.* $(INSTALL_HEADER_DIR)/SDL
+	@cp -frv include/libchdr/*.* $(INSTALL_HEADER_DIR)/SDL
 
 # Used to install library by pressing Alt+R in Programmer's Notepad
 run: all install
