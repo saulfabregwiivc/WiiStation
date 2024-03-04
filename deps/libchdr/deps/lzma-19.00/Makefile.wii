@@ -15,7 +15,7 @@ INCLUDES := ./
 OBJ_DIR			:= obj/release
 LIB_DIR			:= lib
 LZMA_OBJ_DIR		:= $(OBJ_DIR)
-LZMA_SRC_DIR		:= ./src
+LZMA_SRC_DIR		:= ./
 INSTALL_HEADER_DIR	?= $(PORTLIBS_PATH)/wii/include
 INSTALL_LIB_DIR		?= $(PORTLIBS_PATH)/wii/lib
 
