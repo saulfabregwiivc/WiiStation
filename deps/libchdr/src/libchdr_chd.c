@@ -49,8 +49,8 @@
 #include "../include/libchdr/huffman.h"
 #include "../deps/zstd-1.5.5/lib/zstd.h"
 
-#include "../deps/lzma-19.00/src/LzmaEnc.h"
-#include "../deps/lzma-19.00/src/LzmaDec.h"
+#include "../deps/lzma-19.00/LzmaEnc.h"
+#include "../deps/lzma-19.00/LzmaDec.h"
 #if defined(__PS3__) || defined(__PSL1GHT__)
 #define __MACTYPES__
 #endif
