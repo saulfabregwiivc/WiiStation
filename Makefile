@@ -40,7 +40,7 @@ lzma.a:
 	@echo " "
 	@echo "Building lzma.a library for PPC"
 	@echo " "
-	$(MAKE) -C deps/libchdr/deps/lzma-22.01 -f Makefile.wii
+	$(MAKE) -C deps/libchdr/deps/lzma-19.00 -f Makefile.wii
 
 zlibstatic.a:
 	@echo " "
