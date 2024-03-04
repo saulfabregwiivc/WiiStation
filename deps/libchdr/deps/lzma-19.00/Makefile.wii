@@ -59,8 +59,8 @@ $(LIB_DIR)/liblzma.a: $(LZMA_OBJS)
 # Compilation flags.
 COMMON_FLAGS	:= -g -O2 -DNDEBUG
 INCLUDES		:= -Iinclude -I$(LIBOGC_INC)
-DEFINES			:= -mrvl -DGEKKO -mcpu=750 -meabi -mhard-float -ffunction-sections 
-CFLAGS			:= $(COMMON_FLAGS) $(INCLUDES) $(INCLUDE) $(DEFINES)--pedantic -D__BIG_ENDIAN -D__powerpc__ -DBIG_ENDIAN -D_7ZIP_ST
+DEFINES			:= -mrvl -DGEKKO -mcpu=750 -meabi -mhard-float -ffunction-sections
+CFLAGS			:= $(COMMON_FLAGS) $(INCLUDES) $(INCLUDE) $(DEFINES) --pedantic -D__BIG_ENDIAN__ -D__powerpc__ -D__ppc__ -DBIG_ENDIAN -D_7ZIP_ST
 
 # Test link flags.
 LDFLAGS			:= $(COMMON_FLAGS) -L$(LIB_DIR) -L$(LIBOGC_LIB) $(PORTLIBS_PATH)/wii/lib
