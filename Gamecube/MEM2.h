@@ -39,10 +39,13 @@
 #define SPU_BUF_LO   (RECMEM2_HI)
 #define SPU_BUF_HI   (SPU_BUF_LO + SPU_BUF_SIZE)
 
-// We want 4M for Lightrec buffer
+// We want 4MB for Lightrec buffer
 #define LIGHTREC_BUF_SIZE (4*MB)
 #define LIGHTREC_BUF_LO   (SPU_BUF_HI)
 #define LIGHTREC_BUF_HI   (LIGHTREC_BUF_LO + LIGHTREC_BUF_SIZE)
+
+// Know the full MEM2 size that was used
+#define MEM2_USED_SIZE (MCD1_SIZE + MCD2_SIZE + CN_FONT_SIZE + RECMEM2_SIZE + SPU_BUF_SIZE + LIGHTREC_BUF_SIZE)
 
 
 #endif

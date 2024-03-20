@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include "DEBUG.h"
 #include "TEXT.h"
+#include "MEM2.h"
 //#include "usb.h"
 
 char text[DEBUG_TEXT_HEIGHT][DEBUG_TEXT_WIDTH];
@@ -28,7 +29,7 @@ extern u32 dyna_total;
 extern long long gettime();
 extern unsigned int diff_sec(long long start,long long end);
 static void check_heap_space(void){
-    sprintf(txtbuffer,"%dKB MEM2 available", SYS_GetArena2Size() >> 10);
+    sprintf(txtbuffer,"%dKB MEM2 available", MEM2_USED_SIZE);
     DEBUG_print(txtbuffer, DBG_MEMFREEINFO);
 
     //sprintf(txtbuffer,"Dynarec (KB) %05d/%05d", dyna_used, dyna_total >> 10);
