@@ -29,7 +29,7 @@ extern u32 dyna_total;
 extern long long gettime();
 extern unsigned int diff_sec(long long start,long long end);
 static void check_heap_space(void){
-    sprintf(txtbuffer,"%dKB MEM2 available", MEM2_USED_SIZE);
+    sprintf(txtbuffer,"%dKB MEM2 available", (MEM2_USED_SIZE >> 10));
     DEBUG_print(txtbuffer, DBG_MEMFREEINFO);
 
     //sprintf(txtbuffer,"Dynarec (KB) %05d/%05d", dyna_used, dyna_total >> 10);
