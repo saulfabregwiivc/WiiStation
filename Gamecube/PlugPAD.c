@@ -162,16 +162,13 @@ void auto_assign_controllers(void)
 #ifdef HW_RVL
 			assign_controller(i, &controller_Wiimote, i);
 			padType[i] = PADTYPE_WII;
-			padAssign[i] = i;
 #else
 			assign_controller(i, &controller_GC, i);
 			padType[i] = PADTYPE_GAMECUBE;
-			padAssign[i] = i;
 #endif
 		} else {
 			unassign_controller(i);
 			padType[i] = PADTYPE_NONE;
-			padAssign[i] = i;
 		}
 	}
 }
