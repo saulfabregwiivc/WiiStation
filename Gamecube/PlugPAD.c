@@ -160,7 +160,6 @@ void auto_assign_controllers(void)
 	for(; i<2; ++i){
 		unassign_controller(i);
 		padType[i] = PADTYPE_NONE;
-		padAssign[i] = i;
 	}
 }
 
