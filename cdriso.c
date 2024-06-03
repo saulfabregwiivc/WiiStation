@@ -477,6 +477,7 @@ static int parsecue(const char *isofile) {
 
 // this function tries to get the .ccd file of the given .img
 // the necessary data is put into the ti (trackinformation)-array
+/*
 static int parseccd(const char *isofile) {
 	char			ccdname[MAXPATHLEN];
 	FILE			*fi;
@@ -533,6 +534,7 @@ static int parseccd(const char *isofile) {
 
 	return 0;
 }
+*/
 
 // this function tries to get the .mds file of the given .mdf
 // the necessary data is put into the ti (trackinformation)-array
