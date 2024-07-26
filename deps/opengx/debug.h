@@ -32,18 +32,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef OGX_DEBUG_H
 #define OGX_DEBUG_H
 
-#include <stdio.h>
+#include <ogc/system.h>
 
 extern char _ogx_log_level;
 
 #define warning(format, ...) \
     if (_ogx_log_level >= 1) { \
-        fprintf(stderr, format "\n", ##__VA_ARGS__); \
+        SYS_Report(format "\n", ##__VA_ARGS__); \
     }
 
 #define debug(format, ...) \
     if (_ogx_log_level >= 2) { \
-        fprintf(stderr, format "\n", ##__VA_ARGS__); \
+        SYS_Report(format "\n", ##__VA_ARGS__); \
     }
 
 #endif /* OGX_DEBUG_H */
