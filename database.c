@@ -71,6 +71,8 @@ static const char * const gpu_centering_hack_db[] =
 
 static const char * const fractional_Framerate_hack_db[] =
 {
+	/* Contra - Legacy of War - weird char select hang */
+	"SLUS00288", "SLES00608",
 	/* Dance Dance Revolution */
 	"SLPM86503", // 3rd Mix
 	"SLPM86752", // 4th Mix
@@ -154,8 +156,8 @@ cycle_multiplier_overrides[] =
     /* Power Rangers: Lightspeed Rescue - jumping fails if FPS is over 30 */
     { 310, { "SLUS01114", "SLES03286" } },
     /* Psychic Detective - some weird race condition in the game's cdrom code */
-    { 200, { "SLUS00165", "SLUS00166", "SLUS00167" } },
-    { 200, { "SLES00070", "SLES10070", "SLES20070" } },
+    { 181, { "SLUS00165", "SLUS00166", "SLUS00167" } },
+    { 181, { "SLES00070", "SLES10070", "SLES20070" } },
     /* Sol Divide - FMV timing */
     { 200, { "SLUS01519", "SCPS45260", "SLPS01463" } },
     /* Syphon Filter - reportedly hangs under unknown conditions */
