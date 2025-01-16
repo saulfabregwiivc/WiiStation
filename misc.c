@@ -677,6 +677,7 @@ int LoadState() {
 	gzFile f;
 	GPUFreeze_t *gpufP;
 	SPUFreeze_t *spufP;
+	bool oldhle;
 	int Size;
 	char header[32];
 	char *filename;
@@ -705,6 +706,8 @@ int LoadState() {
 
 
 	if (strncmp(PcsxHeader, header, sizeof(header))) { gzclose(f); return -1; }
+
+	oldhle = Config.HLE;
 
 	if (Config.HLE)
 		psxBiosInit();
@@ -769,6 +772,12 @@ int LoadState() {
 	events_restore();
 	if (Config.HLE)
 		psxBiosCheckExe(biosBranchCheckOld, 0x60, 1);
+
+	if (Config.HLE != oldhle) {
+		// at least ari64 drc compiles differently so hard reset
+		psxCpu->Shutdown();
+		psxCpu->Init();
+	}
 
     LoadingBar_showBar(1.0f, LOAD_STATE_MSG);
 
