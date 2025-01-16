@@ -788,7 +788,8 @@ long LIB_GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
     addr = GETLE32(&list[0]) & 0xffffff;
     preload(rambase + (addr & 0x1fffff) / 4);
 
-    cpu_cycles_sum += 10;
+    cpu_cycles_sum += 10 + cpu_cycles_last;
+    cpu_cycles_last = 0;
     if (len > 0)
       cpu_cycles_sum += 5 + len;
 
@@ -814,8 +815,13 @@ long LIB_GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
       }
     }
 
-    if (progress_addr && (cpu_cycles_last + cpu_cycles_sum > 512))
-      break;
+    if (progress_addr) {
+      // hack for bios boot logo race (must be not too fast or too slow)
+      if (gpu.status & PSX_GPU_STATUS_DHEIGHT)
+        cpu_cycles_sum += 5;
+      if (cpu_cycles_sum > 512)
+        break;
+    }
     if (addr == ld_addr) {
       log_anomaly(&gpu, "GPUdmaChain: loop @ %08x, cnt=%u\n", addr, count);
       break;
