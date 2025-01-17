@@ -113,9 +113,9 @@ static void events_restore(void)
 {
 	int i;
 	for (i = 0; i < PSXINT_COUNT; i++)
-		event_cycles[i] = psxRegs.intCycle[i].sCycle + psxRegs.intCycle[i].cycle;
+		psxRegs.event_cycles[i] = psxRegs.intCycle[i].sCycle + psxRegs.intCycle[i].cycle;
 
-	event_cycles[PSXINT_RCNT] = psxNextsCounter + psxNextCounter;
+	psxRegs.event_cycles[PSXINT_RCNT] = psxRegs.psxNextsCounter + psxRegs.psxNextCounter;
 	psxRegs.interrupt |=  1 << PSXINT_RCNT;
 	psxRegs.interrupt &= (1 << PSXINT_COUNT) - 1;
 }

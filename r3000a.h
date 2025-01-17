@@ -229,7 +229,10 @@ typedef struct {
 	u32 code;			/* The instruction */
 	u32 cycle;
 	u32 interrupt;
-	struct { u32 sCycle, cycle; } intCycle[32];
+	struct { u32 sCycle, cycle; } intCycle[20];
+	u32 event_cycles[20];
+	u32 psxNextCounter;
+	u32 psxNextsCounter;
 	// warning: changing anything in psxRegisters requires update of all
 	// asm in libpcsxcore/new_dynarec/
 	u8 ICache_Addr[0x1000];
@@ -327,7 +330,6 @@ static inline u32 *Read_ICache(u32 pc, bool isolate) {
 }
 
 /* new_dynarec stuff */
-extern u32 event_cycles[PSXINT_COUNT];
 extern u32 next_interupt;
 
 void new_dyna_freeze(void *f, int mode);
@@ -335,7 +337,7 @@ void new_dyna_freeze(void *f, int mode);
 #define set_event_raw_abs(e, abs) { \
 	u32 abs_ = abs; \
 	s32 di_ = next_interupt - abs_; \
-	event_cycles[e] = abs_; \
+	psxRegs.event_cycles[e] = abs_; \
 	if (di_ > 0) { \
 		/*printf("%u: next_interupt %u -> %u\n", psxRegs.cycle, next_interupt, abs_);*/ \
 		next_interupt = abs_; \

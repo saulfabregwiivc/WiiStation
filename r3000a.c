@@ -29,12 +29,18 @@
 #include "psxinterpreter.h"
 #include "Gamecube/wiiSXconfig.h"
 #include "Gamecube/DEBUG.h"
+#include <assert.h>
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#endif
 
 R3000Acpu *psxCpu;
 psxRegisters psxRegs;
 extern bool needInitCpu;
 
 int psxInit() {
+	assert(PSXINT_COUNT <= ARRAY_SIZE(psxRegs.intCycle));
+	assert(ARRAY_SIZE(psxRegs.intCycle) == ARRAY_SIZE(psxRegs.event_cycles));
 
 	if (Config.Cpu == DYNACORE_INTERPRETER) {
 		psxCpu = &psxInt;
@@ -149,7 +155,7 @@ void psxException(u32 cause, enum R3000Abdt bdt, psxCP0Regs *cp0) {
 extern u32 psxNextCounter, psxNextsCounter;
 void psxBranchTest() {
 
-	if ((psxRegs.cycle - psxNextsCounter) >= psxNextCounter)
+	if ((psxRegs.cycle - psxRegs.psxNextsCounter) >= psxRegs.psxNextCounter)
 		psxRcntUpdate();
 
 	if (psxRegs.interrupt) {
